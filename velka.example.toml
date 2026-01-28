@@ -1,0 +1,19 @@
+[scan]
+# Ignore patterns (glob syntax)
+# Default patterns are automatically included:
+# - **/target/**, **/.git/**, **/node_modules/**, **/*.lock, **/*.png, **/*.jpg
+ignore_paths = [
+    "**/*.sample",
+    "tests/fixtures/**",
+    "vendor/**",
+]
+
+# Entropy threshold for detecting high-entropy strings (potential secrets)
+# Higher values = fewer false positives, but may miss some secrets
+# Default: 4.6
+entropy_threshold = 4.6
+
+[rules]
+# Disable specific rules globally
+# Example: disable = ["HARDCODED_IP", "JWT_TOKEN"]
+disable = []

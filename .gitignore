@@ -1,0 +1,24 @@
+# Rust Build Artifacts
+/target
+**/*.rs.bk
+
+# IDE & AI Settings (User specific)
+.cursorrules
+.vscode/
+.idea/
+*.swp
+*.iml
+
+# OS Junk
+.DS_Store
+Thumbs.db
+
+# Secrets & Local Configs
+.env
+velka.toml
+!velka.example.toml
+
+# Test Artifacts
+/tests/sandbox
+/secrets
+*.log
