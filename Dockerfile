@@ -6,10 +6,12 @@ WORKDIR /app
 
 COPY Cargo.toml Cargo.lock ./
 RUN mkdir src && echo "fn main() {}" > src/main.rs && echo "pub fn dummy() {}" > src/lib.rs
+RUN mkdir -p benches && echo "fn main() {}" > benches/scan_bench.rs
 RUN cargo build --release --target x86_64-unknown-linux-musl || true
-RUN rm -rf src
+RUN rm -rf src benches
 
 COPY src ./src
+COPY benches ./benches
 RUN touch src/main.rs src/lib.rs
 RUN cargo build --release --target x86_64-unknown-linux-musl
 
