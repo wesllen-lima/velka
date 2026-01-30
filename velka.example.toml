@@ -1,7 +1,9 @@
+# Velka Configuration File
+# Copy this file to velka.toml and customize as needed
+
 [scan]
 # Ignore patterns (glob syntax)
-# Default patterns are automatically included:
-# - **/target/**, **/.git/**, **/node_modules/**, **/*.lock, **/*.png, **/*.jpg
+# Default patterns include: target, .git, node_modules, lock files, images, etc.
 ignore_paths = [
     "**/*.sample",
     "tests/fixtures/**",
@@ -10,10 +12,82 @@ ignore_paths = [
 
 # Entropy threshold for detecting high-entropy strings (potential secrets)
 # Higher values = fewer false positives, but may miss some secrets
-# Default: 4.6
+# Default: 4.6, Range: 3.0 - 6.0
 entropy_threshold = 4.6
+
+# Whitelist patterns - matches containing these strings are ignored
+# Useful for reducing false positives on known-safe values
+whitelist = [
+    "localhost",
+    "127.0.0.1",
+    "0.0.0.0",
+    "example.com",
+    "test@example.com",
+    "placeholder",
+]
+
+# Maximum file size to scan (in MB)
+# Files larger than this are skipped
+# Default: 50
+max_file_size_mb = 50
+
+# Skip lines longer than this threshold (likely minified code)
+# Default: 10000
+skip_minified_threshold = 10000
+
+[output]
+# Redact secrets in output (show AKIA****MPLE instead of full value)
+# Default: true (recommended for CI/CD logs)
+redact_secrets = true
+
+# Number of visible characters at start/end of redacted secrets
+# Default: 4
+redact_visible_chars = 4
+
+[cache]
+# Enable caching for faster incremental scans
+# Default: true
+enabled = true
+
+# Cache location: "project" (.velka-cache/), "user" (~/.cache/velka/), or "both"
+# Default: "both"
+location = "both"
 
 [rules]
 # Disable specific rules globally
 # Example: disable = ["HARDCODED_IP", "JWT_TOKEN"]
 disable = []
+
+# Custom rules - define your own patterns
+# [[rules.custom]]
+# id = "MY_INTERNAL_KEY"
+# pattern = "MYCOMPANY_[A-Z0-9]{32}"
+# severity = "Mortal"  # or "Venial"
+# description = "Internal API key detected"
+
+[[rules.custom]]
+id = "INTERNAL_API"
+pattern = "INTERNAL_[A-Z0-9]{24}"
+severity = "Mortal"
+description = "Internal API key detected"
+
+# Profiles - environment-specific overrides
+# Use with: velka scan . --profile ci
+
+[profile.ci]
+# Disable cache in CI (fresh scan every time)
+cache.enabled = false
+# Always redact in CI logs
+output.redact_secrets = true
+
+[profile.dev]
+# Higher entropy threshold for local development (fewer false positives)
+scan.entropy_threshold = 5.0
+# Show full secrets during development
+output.redact_secrets = false
+
+[profile.strict]
+# Lower entropy threshold for security audits
+scan.entropy_threshold = 4.0
+# Scan larger files
+scan.max_file_size_mb = 100

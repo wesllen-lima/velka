@@ -1,18 +1,28 @@
+use std::cell::RefCell;
 use std::path::Path;
+use std::sync::Arc;
 
-use anyhow::{Context, Result};
+use crate::error::Result;
 use crossbeam_channel::Sender;
 use git2::{DiffOptions, Repository};
 
+use crate::config::VelkaConfig;
 use crate::domain::Sin;
-use crate::engine::scanner::analyze_line;
+use crate::engine::analyzer::{analyze_line, AnalyzeLineConfig};
+use crate::engine::rules::CompiledCustomRule;
 
-pub fn scan_history(repo_path: &Path, sender: Sender<Sin>) -> Result<()> {
-    let repo = Repository::open(repo_path)
-        .context("Failed to open git repository")?;
+pub fn scan_history(repo_path: &Path, config: &VelkaConfig, sender: &Sender<Sin>) -> Result<()> {
+    let repo = Repository::open(repo_path)?;
+
+    let custom_rules = config.compile_custom_rules()?;
+    let custom_rules: Arc<Vec<CompiledCustomRule>> = Arc::new(custom_rules);
 
     let mut revwalk = repo.revwalk()?;
     revwalk.push_head()?;
+
+    let entropy_threshold = config.scan.entropy_threshold;
+    let disabled_rules: Arc<Vec<String>> = Arc::new(config.rules.disable.clone());
+    let whitelist: Arc<Vec<String>> = Arc::new(config.scan.whitelist.clone());
 
     for commit_id in revwalk {
         let oid = commit_id?;
@@ -30,16 +40,18 @@ pub fn scan_history(repo_path: &Path, sender: Sender<Sin>) -> Result<()> {
         diff_opts.context_lines(1);
         diff_opts.minimal(true);
 
-        let diff = repo
-            .diff_tree_to_tree(Some(&parent_tree), Some(&commit_tree), Some(&mut diff_opts))
-            .context("Failed to create diff")?;
+        let diff =
+            repo.diff_tree_to_tree(Some(&parent_tree), Some(&commit_tree), Some(&mut diff_opts))?;
 
         let commit_hash = oid.to_string();
         let short_hash = commit_hash.chars().take(8).collect::<String>();
 
-        use std::cell::RefCell;
         let hunk_context = RefCell::new(Vec::<String>::new());
         let current_file_path = RefCell::new(String::new());
+
+        let disabled = Arc::clone(&disabled_rules);
+        let wl = Arc::clone(&whitelist);
+        let custom = Arc::clone(&custom_rules);
 
         diff.foreach(
             &mut |delta, _| {
@@ -52,8 +64,7 @@ pub fn scan_history(repo_path: &Path, sender: Sender<Sin>) -> Result<()> {
                     .path()
                     .or_else(|| delta.old_file().path())
                     .and_then(|p| p.to_str())
-                    .map(|s| s.to_string())
-                    .unwrap_or_else(|| "unknown".to_string());
+                    .map_or_else(|| "unknown".to_string(), std::string::ToString::to_string);
 
                 true
             },
@@ -65,7 +76,7 @@ pub fn scan_history(repo_path: &Path, sender: Sender<Sin>) -> Result<()> {
             Some(&mut |_delta, _hunk, line| {
                 let origin = line.origin();
                 let content_bytes = line.content();
-                let content = match std::str::from_utf8(content_bytes) {
+                let line_content = match std::str::from_utf8(content_bytes) {
                     Ok(s) => s.trim_end(),
                     Err(_) => return true,
                 };
@@ -73,50 +84,69 @@ pub fn scan_history(repo_path: &Path, sender: Sender<Sin>) -> Result<()> {
                 let mut hunk_ctx = hunk_context.borrow_mut();
 
                 if origin == '+' {
-                    let trimmed = content.trim();
-                    if !trimmed.is_empty() {
+                    let trimmed = line_content.trim();
+                    if trimmed.is_empty() {
+                        hunk_ctx.push(line_content.to_string());
+                    } else {
                         let line_num = line.new_lineno().unwrap_or(0) as usize;
                         let ctx_len = hunk_ctx.len();
 
-                        let mut context = Vec::with_capacity(3);
+                        let mut ctx_lines = Vec::with_capacity(3);
                         if ctx_len > 0 {
-                            context.push(hunk_ctx[ctx_len - 1].clone());
+                            ctx_lines.push(hunk_ctx[ctx_len - 1].clone());
                         } else {
-                            context.push(String::new());
+                            ctx_lines.push(String::new());
                         }
-                        context.push(content.to_string());
-                        context.push(String::new());
+                        ctx_lines.push(line_content.to_string());
+                        ctx_lines.push(String::new());
 
                         drop(hunk_ctx);
 
                         let file_path = current_file_path.borrow().clone();
+                        let adaptive_threshold = if let Some(ext) = std::path::Path::new(&file_path)
+                            .extension()
+                            .and_then(|e| e.to_str())
+                        {
+                            match ext {
+                                "js" | "min.js" | "min.css" => entropy_threshold + 0.5,
+                                "env" | "config" | "properties" | "ini" => entropy_threshold - 0.3,
+                                "json" | "yaml" | "yml" | "toml" => entropy_threshold - 0.2,
+                                _ => entropy_threshold,
+                            }
+                        } else {
+                            entropy_threshold
+                        };
+                        let scan_cfg = AnalyzeLineConfig {
+                            entropy_threshold: adaptive_threshold,
+                            disabled_rules: &disabled,
+                            whitelist: &wl,
+                            custom_rules: &custom,
+                            skip_entropy_in_regex_context: true,
+                        };
 
+                        let ctx_refs: [&str; 3] = [&ctx_lines[0], &ctx_lines[1], &ctx_lines[2]];
                         if let Some(sin) = analyze_line(
                             trimmed,
                             &file_path,
                             line_num,
-                            context,
+                            ctx_refs,
                             Some(short_hash.clone()),
-                            4.6,
-                            &[],
+                            &scan_cfg,
                         ) {
                             if sender.send(sin).is_err() {
                                 return false;
                             }
                         }
 
-                        hunk_context.borrow_mut().push(content.to_string());
-                    } else {
-                        hunk_ctx.push(content.to_string());
+                        hunk_context.borrow_mut().push(line_content.to_string());
                     }
                 } else if origin == ' ' {
-                    hunk_ctx.push(content.to_string());
+                    hunk_ctx.push(line_content.to_string());
                 }
 
                 true
             }),
-        )
-        .context("Failed to process diff")?;
+        )?;
     }
 
     Ok(())

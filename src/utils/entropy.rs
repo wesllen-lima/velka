@@ -1,3 +1,4 @@
+#[must_use]
 pub fn calculate_entropy(s: &str) -> f32 {
     let len = s.len();
     if len == 0 {
@@ -17,4 +18,35 @@ pub fn calculate_entropy(s: &str) -> f32 {
             -p * p.log2()
         })
         .sum()
+}
+
+#[cfg(test)]
+#[allow(clippy::float_cmp)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_entropy_empty() {
+        assert_eq!(calculate_entropy(""), 0.0);
+    }
+
+    #[test]
+    fn test_entropy_uniform_low() {
+        let s = "aaaa";
+        let e = calculate_entropy(s);
+        assert!((e - 0.0).abs() < 0.01);
+    }
+
+    #[test]
+    fn test_entropy_high() {
+        let s = "abcdefghijklmnopqrstuvwxyz0123456789";
+        let e = calculate_entropy(s);
+        assert!(e > 4.0);
+    }
+
+    #[test]
+    fn test_entropy_repeated_char() {
+        let e = calculate_entropy("aaaaaaaaaa");
+        assert_eq!(e, 0.0);
+    }
 }

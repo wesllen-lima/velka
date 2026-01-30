@@ -1,0 +1,36 @@
+name: Publish to crates.io
+
+on:
+  release:
+    types: [published]
+  workflow_dispatch:
+
+jobs:
+  publish:
+    name: Publish
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - name: Verify tag matches Cargo.toml version
+        if: github.event_name == 'release'
+        run: |
+          TAG="${{ github.event.release.tag_name }}"
+          if [[ -z "$TAG" || "$TAG" != v* ]]; then
+            echo "::error::Release tag must start with 'v' (e.g. v1.2.0), got: $TAG"
+            exit 1
+          fi
+          WANT="${TAG#v}"
+          GOT=$(grep -E '^version\s*=' Cargo.toml | head -1 | sed 's/.*=\s*"\(.*\)".*/\1/')
+          if [[ "$GOT" != "$WANT" ]]; then
+            echo "::error::Version mismatch: Cargo.toml has $GOT but release tag is $TAG (expected v$GOT)"
+            exit 1
+          fi
+          echo "Version OK: $GOT"
+
+      - name: Publish to crates.io
+        run: cargo publish
+        env:
+          CARGO_REGISTRY_TOKEN: ${{ secrets.CRATES_IO_TOKEN }}

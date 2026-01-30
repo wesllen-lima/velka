@@ -1,0 +1,59 @@
+name: "Velka Security Scan"
+description: "Run Velka secret scanner on your repository"
+branding:
+  icon: "shield"
+  color: "red"
+
+inputs:
+  path:
+    description: "Path to scan (default: repository root)"
+    required: false
+    default: "."
+  fail-on-secrets:
+    description: "Fail the step if mortal sins are found"
+    required: false
+    default: "true"
+  format:
+    description: "Output format (terminal, json, csv, junit, sarif, markdown, html)"
+    required: false
+    default: "terminal"
+  mortal-only:
+    description: "Only report mortal (critical) sins"
+    required: false
+    default: "false"
+
+outputs:
+  exit-code:
+    description: "Exit code from velka (0 = clean, 1 = sins found)"
+  has-sins:
+    description: "Whether any sins were found (true/false)"
+
+runs:
+  using: "composite"
+  steps:
+    - name: Install Rust
+      uses: dtolnay/rust-toolchain@stable
+      with:
+        components: rustfmt
+
+    - name: Install Velka
+      run: cargo install velka --locked
+      shell: bash
+
+    - name: Run Velka
+      id: velka
+      run: |
+        set +e
+        velka scan ${{ inputs.path }} --format ${{ inputs.format }} ${{ inputs.mortal-only == 'true' && '--mortal-only' || '' }}
+        code=$?
+        if [ $code -eq 0 ]; then
+          echo "exit-code=0" >> "$GITHUB_OUTPUT"
+          echo "has-sins=false" >> "$GITHUB_OUTPUT"
+        else
+          echo "exit-code=$code" >> "$GITHUB_OUTPUT"
+          echo "has-sins=true" >> "$GITHUB_OUTPUT"
+          if [ "${{ inputs.fail-on-secrets }}" = "true" ]; then
+            exit $code
+          fi
+        fi
+      shell: bash

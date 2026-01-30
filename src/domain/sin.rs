@@ -1,4 +1,5 @@
-use once_cell::sync::Lazy;
+use std::sync::LazyLock;
+
 use regex::Regex;
 use serde::Serialize;
 
@@ -21,11 +22,13 @@ pub struct Sin {
     pub rule_id: String,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub commit_hash: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub verified: Option<bool>,
 }
 
 pub struct Rule {
     pub id: &'static str,
     pub description: &'static str,
-    pub pattern: &'static Lazy<Regex>,
+    pub pattern: &'static LazyLock<Regex>,
     pub severity: Severity,
 }
