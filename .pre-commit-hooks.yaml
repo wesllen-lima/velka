@@ -1,0 +1,7 @@
+- id: velka
+  name: velka
+  description: Run Velka secret scanner on staged files or full repo
+  entry: velka scan .
+  language: system
+  pass_filenames: false
+  always_run: true

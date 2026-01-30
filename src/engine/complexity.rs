@@ -1,10 +1,11 @@
 use std::path::Path;
 
-use anyhow::Result;
+use crate::error::Result;
 use crossbeam_channel::Sender;
 
 use crate::domain::Severity;
 use crate::domain::Sin;
+use crate::utils::build_context;
 
 fn count_leading_spaces(line: &str) -> usize {
     line.chars()
@@ -57,27 +58,11 @@ fn count_complexity_keywords(line: &str) -> usize {
     count
 }
 
-fn build_context(lines: &[&str], line_idx: usize) -> Vec<String> {
-    let mut context = Vec::with_capacity(3);
-
-    if line_idx > 0 {
-        context.push(lines[line_idx - 1].to_string());
-    } else {
-        context.push(String::new());
-    }
-
-    context.push(lines[line_idx].to_string());
-
-    if line_idx + 1 < lines.len() {
-        context.push(lines[line_idx + 1].to_string());
-    } else {
-        context.push(String::new());
-    }
-
-    context
+fn context_to_vec(ctx: [&str; 3]) -> Vec<String> {
+    ctx.iter().map(std::string::ToString::to_string).collect()
 }
 
-pub fn analyze_complexity(path: &Path, sender: Sender<Sin>) -> Result<()> {
+pub fn analyze_complexity(path: &Path, sender: &Sender<Sin>) -> Result<()> {
     let walker = ignore::WalkBuilder::new(path)
         .hidden(false)
         .git_ignore(true)
@@ -86,9 +71,8 @@ pub fn analyze_complexity(path: &Path, sender: Sender<Sin>) -> Result<()> {
     walker.run(|| {
         let tx = sender.clone();
         Box::new(move |entry_result| {
-            let entry = match entry_result {
-                Ok(e) => e,
-                Err(_) => return ignore::WalkState::Continue,
+            let Ok(entry) = entry_result else {
+                return ignore::WalkState::Continue;
             };
 
             let file_path = entry.path();
@@ -96,18 +80,16 @@ pub fn analyze_complexity(path: &Path, sender: Sender<Sin>) -> Result<()> {
                 return ignore::WalkState::Continue;
             }
 
-            let content = match std::fs::read(file_path) {
-                Ok(c) => c,
-                Err(_) => return ignore::WalkState::Continue,
+            let Ok(file_content) = std::fs::read(file_path) else {
+                return ignore::WalkState::Continue;
             };
 
-            if content.len() > 1024 * 1024 || content.contains(&0) {
+            if file_content.len() > 1024 * 1024 || file_content.contains(&0) {
                 return ignore::WalkState::Continue;
             }
 
-            let text = match String::from_utf8(content) {
-                Ok(t) => t,
-                Err(_) => return ignore::WalkState::Continue,
+            let Ok(text) = String::from_utf8(file_content) else {
+                return ignore::WalkState::Continue;
             };
 
             let lines: Vec<&str> = text.lines().collect();
@@ -124,19 +106,20 @@ pub fn analyze_complexity(path: &Path, sender: Sender<Sin>) -> Result<()> {
                 if is_function_start(line) {
                     if let Some(func_start) = current_function_start {
                         if complexity_score > 15 {
-                            let context = build_context(&lines, func_start);
+                            let line_context =
+                                context_to_vec(build_context(&lines, func_start.saturating_sub(1)));
                             let sin = Sin {
                                 path: path_str.clone(),
                                 line_number: func_start,
                                 snippet: lines[func_start - 1].trim().to_string(),
-                                context,
+                                context: line_context,
                                 severity: Severity::Venial,
                                 description: format!(
-                                    "Function complexity score {} exceeds threshold (15)",
-                                    complexity_score
+                                    "Function complexity score {complexity_score} exceeds threshold (15)",
                                 ),
                                 rule_id: "COMPLEXITY_SIN".to_string(),
                                 commit_hash: None,
+                                verified: None,
                             };
 
                             if tx.send(sin).is_err() {
@@ -162,19 +145,20 @@ pub fn analyze_complexity(path: &Path, sender: Sender<Sin>) -> Result<()> {
 
             if let Some(func_start) = current_function_start {
                 if complexity_score > 15 {
-                    let context = build_context(&lines, func_start);
+                    let line_context =
+                        context_to_vec(build_context(&lines, func_start.saturating_sub(1)));
                     let sin = Sin {
                         path: path_str.clone(),
                         line_number: func_start,
                         snippet: lines[func_start - 1].trim().to_string(),
-                        context,
+                        context: line_context,
                         severity: Severity::Venial,
                         description: format!(
-                            "Function complexity score {} exceeds threshold (15)",
-                            complexity_score
+                            "Function complexity score {complexity_score} exceeds threshold (15)",
                         ),
                         rule_id: "COMPLEXITY_SIN".to_string(),
                         commit_hash: None,
+                        verified: None,
                     };
 
                     if tx.send(sin).is_err() {

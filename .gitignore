@@ -22,3 +22,11 @@ velka.toml
 /tests/sandbox
 /secrets
 *.log
+
+# Velka Cache
+.velka-cache/
+*.sarif
+velka-report.xml
+report.html
+results.csv
+results.json
