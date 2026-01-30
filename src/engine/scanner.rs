@@ -353,7 +353,7 @@ pub fn investigate_with_progress(
 
             if let Some(ref pb) = pb_clone {
                 let count = counter.fetch_add(1, Ordering::Relaxed);
-                if count.is_multiple_of(10) {
+                if count % 10 == 0 {
                     pb.set_position(count);
                 }
             }

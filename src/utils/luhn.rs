@@ -28,7 +28,7 @@ pub fn is_valid(number: &str) -> bool {
         })
         .sum();
 
-    sum.is_multiple_of(10)
+    sum % 10 == 0
 }
 
 #[cfg(test)]
