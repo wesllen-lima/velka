@@ -1,0 +1,36 @@
+{
+  "name": "velka",
+  "displayName": "Velka Secret Scanner",
+  "description": "Run Velka secret scanner on your workspace",
+  "version": "0.1.0",
+  "publisher": "velka",
+  "repository": "https://github.com/wesllen-lima/velka",
+  "homepage": "https://github.com/wesllen-lima/velka#readme",
+  "bugs": "https://github.com/wesllen-lima/velka/issues",
+  "engines": {
+    "vscode": "^1.70.0"
+  },
+  "categories": [
+    "Other",
+    "Security"
+  ],
+  "activationEvents": ["onCommand:velka.scan"],
+  "main": "./out/extension.js",
+  "contributes": {
+    "commands": [
+      {
+        "command": "velka.scan",
+        "title": "Velka: Scan for secrets"
+      }
+    ]
+  },
+  "scripts": {
+    "vscode:prepublish": "npm run compile",
+    "compile": "tsc -p ./",
+    "watch": "tsc -watch -p ./"
+  },
+  "devDependencies": {
+    "@types/vscode": "^1.70.0",
+    "typescript": "^5.0.0"
+  }
+}

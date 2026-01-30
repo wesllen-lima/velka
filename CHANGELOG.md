@@ -1,0 +1,106 @@
+# Changelog
+
+All notable changes to Velka will be documented in this file.
+
+The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
+and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
+
+## [1.2.0] - 2026-01-29
+
+### Added
+- **Verification**: `--verify` flag to validate GitHub tokens via API (opt-in, network call)
+- **Stdin**: `velka stdin` to scan content from pipe (e.g. `git diff | velka stdin`)
+- **VS Code**: MVP extension in `vscode-extension/` (command: Velka: Scan for secrets)
+- **GitHub Action**: `action.yml` for use as `uses: wesllen-lima/velka@main`
+- **Pre-commit**: `.pre-commit-hooks.yaml` for pre-commit framework
+- **Detectors**: 20+ new rules (Datadog, New Relic, Cloudflare, OpenAI, Supabase, Vercel, MongoDB Atlas, Sentry, Algolia, Notion, Linear, Figma, Airtable, DigitalOcean, PlanetScale, Railway, Render, Netlify, etc.)
+
+### Changed
+- **Performance**: `ScanCache` uses `RwLock` instead of `Mutex` for parallel reads
+- **Dependencies**: Replaced `once_cell::Lazy` with `std::sync::LazyLock` (Rust 1.80+)
+- **CLI**: `scan_with_options` / `run_*` take references where appropriate (Clippy)
+
+### Fixed
+- Clippy compliance (`-D warnings`) across the codebase
+
+## [1.1.0] - 2026-01-28
+
+### Added
+- **Security Hardening**
+  - Secret redaction in all output formats (enabled by default)
+  - Path validation to prevent scanning system directories
+  - Secure error handling (no path leakage)
+  - `--no-redact` flag for debugging
+
+- **New Output Formats**
+  - CSV export
+  - JUnit XML for CI integration
+  - SARIF for GitHub Code Scanning
+  - Markdown reports
+  - HTML reports with modern dark theme
+
+- **Incremental Scanning**
+  - `--diff` flag to scan only changed files
+  - `--staged` flag for pre-commit scanning
+  - Progress bar with `--progress` flag
+
+- **Configuration 2.0**
+  - Profile support (`--profile ci`, `--profile dev`)
+  - Custom rules via TOML configuration
+  - Whitelist for false positive management
+  - Cache configuration
+
+- **Performance**
+  - Memory-mapped I/O for large files (>1MB)
+  - Binary detection with `infer` crate
+  - Skip minified files (>10k chars per line)
+  - Arc-based shared data for parallel workers
+
+- **New Detection Rules**
+  - SendGrid API keys
+  - Twilio API keys
+  - NPM tokens
+  - PyPI tokens
+  - Discord bot tokens
+  - Telegram bot tokens
+  - Database connection strings
+  - Hardcoded passwords
+  - Azure Storage keys
+  - GCP Service Account keys
+  - Heroku API keys
+  - Mailgun API keys
+  - Square tokens
+  - Generic API key patterns
+  - Kubernetes hostNetwork/hostPID
+
+- **Library API**
+  - `velka::scan()` for simple scanning
+  - `velka::scan_with_config()` for custom configuration
+  - `velka::scan_with_options()` for advanced usage
+
+- **DevOps**
+  - Multi-stage Dockerfile with distroless image
+  - GitHub Actions workflow
+  - GitLab CI template
+  - Pre-commit hook improvements
+
+### Changed
+- Improved AWS key detection patterns
+- Enhanced SSH private key detection (PGP, ENCRYPTED)
+- Better error messages with `VELKA_DEBUG` mode
+- Exit code 1 when mortal sins are found
+- Sorted output by file path and line number
+
+### Fixed
+- Hardcoded entropy threshold in git history scan
+- Silent error handling in walker callbacks
+- Pre-commit hook checks for existing hooks
+
+## [0.1.0] - Initial Release
+
+### Added
+- Basic secret scanning
+- Git history scanning
+- Complexity analysis
+- Terminal and JSON output
+- Pre-commit hook installation
