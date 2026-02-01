@@ -4,6 +4,16 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <meta name="description" content="Velka: scanner de segredos em código. 52 regras, zero telemetria, Rust. Detecta AWS, GitHub, Stripe e mais. CLI e biblioteca.">
+    <link rel="canonical" href="https://github.com/wesllen-lima/velka">
+    <meta property="og:type" content="website">
+    <meta property="og:title" content="Velka — The Code Sin Judge">
+    <meta property="og:description" content="Velka: scanner de segredos em código. 52 regras, zero telemetria, Rust.">
+    <meta property="og:url" content="https://github.com/wesllen-lima/velka">
+    <meta name="twitter:card" content="summary_large_image">
+    <meta name="theme-color" content="#0a0a0f">
+    <link rel="icon" href="/favicon.ico" />
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <title>Velka — The Code Sin Judge</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@300..700&family=Fira+Code:wght@400;600&display=swap" rel="stylesheet">
@@ -77,11 +87,11 @@
                     <span class="text-xl font-bold">velka</span>
                 </a>
                 
-                <button type="button" onclick="document.getElementById('nav-menu').classList.toggle('max-md:hidden'); document.getElementById('nav-menu').classList.toggle('max-md:flex');" class="md:hidden p-2 rounded-lg text-gray-400 hover:text-white hover:bg-white/10" aria-label="Menu" aria-expanded="false">
+                <button type="button" onclick="toggleNavMenu()" class="md:hidden p-2 rounded-lg text-gray-400 hover:text-white hover:bg-white/10" aria-label="Menu" aria-expanded="false">
                     <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 12h16M4 18h16"/></svg>
                 </button>
                 
-                <nav id="nav-menu" class="max-md:hidden max-md:absolute max-md:top-16 max-md:left-4 max-md:right-4 max-md:flex-col max-md:gap-2 max-md:py-4 max-md:rounded-xl max-md:glass max-md:border max-md:z-50 md:flex items-center gap-6 text-sm font-medium text-gray-400" aria-label="Main">
+                <nav id="nav-menu" class="hidden md:flex items-center gap-6 text-sm font-medium text-gray-400 md:static" aria-label="Main">
                     <a href="#comandos" class="hover:text-white transition-colors max-md:px-4 max-md:py-2" data-i18n-pt="Comandos" data-i18n-en="Commands">Comandos</a>
                     <a href="#benchmarks" class="hover:text-white transition-colors max-md:px-4 max-md:py-2" data-i18n-pt="Desempenho" data-i18n-en="Performance">Desempenho</a>
                     <a href="#formatos" class="hover:text-white transition-colors max-md:px-4 max-md:py-2" data-i18n-pt="Formatos" data-i18n-en="Formats">Formatos</a>
@@ -466,6 +476,21 @@ let mortal_count = sins.iter()
         // Sistema de idiomas (i18n)
         let currentLang = 'pt';
         
+        function toggleNavMenu() {
+            const nav = document.getElementById('nav-menu');
+            const btn = document.querySelector('button[aria-label="Menu"]');
+            const isHidden = nav.classList.contains('hidden');
+            if (isHidden) {
+                nav.classList.remove('hidden');
+                nav.classList.add('flex');
+                btn.setAttribute('aria-expanded', 'true');
+            } else {
+                nav.classList.add('hidden');
+                nav.classList.remove('flex');
+                btn.setAttribute('aria-expanded', 'false');
+            }
+        }
+
         function toggleLanguage() {
             currentLang = currentLang === 'pt' ? 'en' : 'pt';
             document.body.setAttribute('data-lang', currentLang);
@@ -484,14 +509,14 @@ let mortal_count = sins.iter()
         }
         
         function copyCode(btn) {
-            const code = btn.parentElement.nextElementSibling.textContent;
-            navigator.clipboard.writeText(code);
-            
-            const original = btn.innerHTML;
-            const msg = currentLang === 'pt' ? '<span class="text-green-400">✓ Copiado!</span>' : '<span class="text-green-400">✓ Copied!</span>';
-            btn.innerHTML = msg;
+            const pre = btn.parentElement.nextElementSibling;
+            const code = pre ? pre.textContent : '';
+            navigator.clipboard.writeText(code || '');
+            const originalText = btn.textContent;
+            const msg = currentLang === 'pt' ? '✓ Copiado!' : '✓ Copied!';
+            btn.textContent = msg;
             setTimeout(() => {
-                btn.innerHTML = original;
+                btn.textContent = originalText;
             }, 2000);
         }
         
