@@ -171,7 +171,11 @@ struct ScanArgs {
     #[arg(long, help = "Migrate secrets to .env and update source files")]
     migrate_to_env: bool,
 
-    #[arg(long, help = "Path to .env file (default: .env)", default_value = ".env")]
+    #[arg(
+        long,
+        help = "Path to .env file (default: .env)",
+        default_value = ".env"
+    )]
     env_file: Option<PathBuf>,
 
     #[arg(long, help = "Show what would be done without writing")]
@@ -430,21 +434,20 @@ fn run_migrate_flow(path: &Path, args: &ScanArgs) -> Result<()> {
     let env_file = args.env_file.as_deref().unwrap_or(Path::new(".env"));
 
     if args.dry_run {
-        let report = run_migrate(path, env_file, true, false)
-            .map_err(|e| anyhow::anyhow!("{e}"))?;
+        let report =
+            run_migrate(path, env_file, true, false).map_err(|e| anyhow::anyhow!("{e}"))?;
         println!("{}", format_migrate_report(&report));
         return Ok(());
     }
 
     if args.yes {
-        let report = run_migrate(path, env_file, false, true)
-            .map_err(|e| anyhow::anyhow!("{e}"))?;
+        let report =
+            run_migrate(path, env_file, false, true).map_err(|e| anyhow::anyhow!("{e}"))?;
         println!("{}", format_migrate_report(&report));
         return Ok(());
     }
 
-    let preview = run_migrate(path, env_file, true, false)
-        .map_err(|e| anyhow::anyhow!("{e}"))?;
+    let preview = run_migrate(path, env_file, true, false).map_err(|e| anyhow::anyhow!("{e}"))?;
     println!("{}", format_migrate_report(&preview));
     print!(
         "Will update {} file(s) and create/update .env. Proceed? [y/N] ",
@@ -455,8 +458,8 @@ fn run_migrate_flow(path: &Path, args: &ScanArgs) -> Result<()> {
     if std::io::stdin().read_line(&mut buf).is_ok()
         && (buf.trim().eq_ignore_ascii_case("y") || buf.trim().eq_ignore_ascii_case("yes"))
     {
-        let report = run_migrate(path, env_file, false, true)
-            .map_err(|e| anyhow::anyhow!("{e}"))?;
+        let report =
+            run_migrate(path, env_file, false, true).map_err(|e| anyhow::anyhow!("{e}"))?;
         println!("{}", format_migrate_report(&report));
     }
     Ok(())
