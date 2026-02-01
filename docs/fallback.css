@@ -1,0 +1,96 @@
+/* Minimal fallback CSS to approximate Tailwind utilities used in docs/index.html */
+:root{
+  --max-w-7xl:80rem;
+  --bg:#0a0a0f;
+  --glass-bg:rgba(20,20,24,0.8);
+  --muted:#8b949e;
+}
+html,body{height:100%;}
+body{margin:0; font-family: 'Space Grotesk', sans-serif; background:var(--bg); color:#fafafa; -webkit-font-smoothing:antialiased}
+.max-w-7xl{max-width:var(--max-w-7xl);}
+.mx-auto{margin-left:auto;margin-right:auto}
+.px-4{padding-left:1rem;padding-right:1rem}
+.sm\:px-6{padding-left:1.5rem;padding-right:1.5rem}
+.lg\:px-8{padding-left:2rem;padding-right:2rem}
+.pt-32{padding-top:8rem}
+.pb-20{padding-bottom:5rem}
+.lg\:pt-40{padding-top:10rem}
+.lg\:pb-32{padding-bottom:8rem}
+.grid{display:grid}
+.lg\:grid-cols-2{grid-template-columns:1fr 1fr}
+.gap-12{gap:3rem}
+.items-center{align-items:center}
+.space-y-8 > * + *{margin-top:2rem}
+.flex{display:flex}
+.flex-wrap{flex-wrap:wrap}
+.justify-between{justify-content:space-between}
+.gap-2{gap:0.5rem}
+.gap-4{gap:1rem}
+.gap-6{gap:1.5rem}
+.h-16{height:4rem}
+.rounded-lg{border-radius:0.5rem}
+.rounded-xl{border-radius:0.75rem}
+.rounded-2xl{border-radius:1rem}
+.font-bold{font-weight:700}
+.text-xl{font-size:1.25rem}
+.text-5xl{font-size:3rem}
+.lg\:text-7xl{font-size:4.5rem}
+.text-4xl{font-size:2.25rem}
+.text-gray-400{color:#9ca3af}
+.text-gray-500{color:#6b7280}
+.text-green-400{color:#34d399}
+.text-red-400{color:#fb7185}
+.text-yellow-400{color:#f59e0b}
+.bg-black\/50{background:rgba(0,0,0,0.5)}
+.bg-black\/80{background:rgba(0,0,0,0.8)}
+.bg-white\/5{background:rgba(255,255,255,0.05)}
+.font-mono{font-family: 'Fira Code', monospace}
+.text-sm{font-size:0.875rem}
+.text-xs{font-size:0.75rem}
+.italic{font-style:italic}
+.uppercase{text-transform:uppercase}
+.tracking-tight{letter-spacing:-0.02em}
+.leading-\[1\.1\]{line-height:1.1}
+.shadow-2xl{box-shadow:0 25px 50px -12px rgba(0,0,0,0.75)}
+.overflow-hidden{overflow:hidden}
+.overflow-x-auto{overflow-x:auto}
+.border{border:1px solid rgba(255,255,255,0.06)}
+.border-b{border-bottom:1px solid rgba(255,255,255,0.06)}
+.border-white\/10{border-color:rgba(255,255,255,0.1)}
+.bg-red-600{background:#dc2626}
+.hover\:bg-red-700:hover{background:#b91c1c}
+.text-white{color:#fff}
+.hidden{display:none}
+.antialiased{-webkit-font-smoothing:antialiased}
+.overflow-x-hidden{overflow-x:hidden}
+.header-fixed{position:fixed;top:0;left:0;right:0;z-index:50}
+/* some attribute-based rules for responsive classes present in markup */
+[class*="md:grid-cols-2"]{grid-template-columns:1fr 1fr}
+[class*="lg:grid-cols-2"]{grid-template-columns:1fr 1fr}
+[class*="max-md\:px-4"]{padding-left:1rem;padding-right:1rem}
+
+/* simple utility to mimic glass look used in site */
+.glass{background:var(--glass-bg);backdrop-filter:blur(12px);border:1px solid rgba(255,255,255,0.08)}
+
+/* small terminal box */
+.font-mono.text-sm{font-size:0.875rem}
+
+/* make tables reasonably styled */
+table{width:100%;border-collapse:collapse}
+th,td{padding:0.75rem;text-align:left}
+thead{background:rgba(255,255,255,0.03)}
+
+/* fallback for utility colors used */
+.text-red-500{color:#ef4444}
+.text-green-500{color:#10b981}
+.text-yellow-500{color:#f59e0b}
+
+/* ensure header sits above content spacing */
+header{position:fixed;top:0;left:0;right:0;z-index:50}
+body > section{padding-top:5rem}
+
+/* minimal responsive adjustments */
+@media(min-width:1024px){
+  .lg\:pt-40{padding-top:10rem}
+  .lg\:pb-32{padding-bottom:8rem}
+}

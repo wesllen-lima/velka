@@ -19,7 +19,30 @@
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <title>Velka — The Code Sin Judge</title>
-    <link rel="stylesheet" href="/docs/tailwind.css">
+        <link rel="stylesheet" href="/docs/tailwind.css">
+        <script>
+        // If Tailwind didn't load (missing file), inject a small fallback stylesheet.
+        (function(){
+            function loadFallback(){
+                var l=document.createElement('link');
+                l.rel='stylesheet';
+                l.href='/docs/fallback.css';
+                document.head.appendChild(l);
+            }
+            function check(){
+                try{
+                    var t=document.createElement('div');
+                    t.className='hidden';
+                    t.style.position='absolute'; t.style.left='-9999px';
+                    document.body.appendChild(t);
+                    var disp = getComputedStyle(t).display;
+                    document.body.removeChild(t);
+                    if(disp !== 'none') loadFallback();
+                }catch(e){ loadFallback(); }
+            }
+            if(document.readyState === 'loading') window.addEventListener('DOMContentLoaded', check); else check();
+        })();
+        </script>
     <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@300..700&family=Fira+Code:wght@400;600&display=swap" rel="stylesheet">
     <!-- Tailwind built via GitHub Action: /docs/tailwind.css -->
     <style>
