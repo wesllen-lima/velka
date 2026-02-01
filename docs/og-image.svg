@@ -9,7 +9,7 @@
   <g fill="url(#g)">
     <text x="80" y="220" font-family="Space Grotesk, Arial, sans-serif" font-size="72" font-weight="700">velka</text>
   </g>
-  <text x="80" y="320" fill="#9ca3af" font-family="Inter, Arial, sans-serif" font-size="36">The Code Sin Judge — Secret scanner & security analyzer</text>
+  <text x="80" y="320" fill="#9ca3af" font-family="Inter, Arial, sans-serif" font-size="36">The Code Sin Judge — Secret scanner &amp; security analyzer</text>
   <rect x="80" y="360" width="420" height="6" rx="3" fill="url(#g)" />
   <g transform="translate(820,120)">
     <rect width="320" height="320" rx="24" fill="#111" stroke="#222" />
