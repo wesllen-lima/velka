@@ -7,8 +7,8 @@ use crate::domain::Severity;
 use crate::domain::Sin;
 use crate::engine::RULES;
 use crate::output::redact::{redact_line, RedactionConfig};
-use crate::output::report::build_report;
 use crate::output::remediation::suggest_remediation;
+use crate::output::report::build_report;
 use crate::output::Report;
 use crate::utils::{calculate_entropy, extract_quoted_string_contents};
 

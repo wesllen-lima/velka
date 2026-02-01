@@ -84,9 +84,7 @@ fn looks_like_placeholder(matched: &str) -> bool {
     if s.len() > 80 {
         return false;
     }
-    PLACEHOLDER_PATTERNS
-        .iter()
-        .any(|re| re.is_match(s))
+    PLACEHOLDER_PATTERNS.iter().any(|re| re.is_match(s))
 }
 
 pub struct AnalyzeLineConfig<'a> {
@@ -432,10 +430,30 @@ mod tests {
 
     #[test]
     fn test_analyze_context_example_value_pattern() {
-        assert!(analyze_context(&[], "let key = x;", Some("example123"), "test.rs"));
-        assert!(analyze_context(&[], "let key = x;", Some("test-1"), "test.rs"));
-        assert!(analyze_context(&[], "let key = x;", Some("placeholder"), "test.rs"));
-        assert!(analyze_context(&[], "let key = x;", Some("demo_99"), "test.rs"));
+        assert!(analyze_context(
+            &[],
+            "let key = x;",
+            Some("example123"),
+            "test.rs"
+        ));
+        assert!(analyze_context(
+            &[],
+            "let key = x;",
+            Some("test-1"),
+            "test.rs"
+        ));
+        assert!(analyze_context(
+            &[],
+            "let key = x;",
+            Some("placeholder"),
+            "test.rs"
+        ));
+        assert!(analyze_context(
+            &[],
+            "let key = x;",
+            Some("demo_99"),
+            "test.rs"
+        ));
     }
 
     #[test]
@@ -446,8 +464,18 @@ mod tests {
             None,
             "test.rs",
         ));
-        assert!(analyze_context(&["# test value"], "let key = x;", None, "test.rs"));
-        assert!(analyze_context(&["example:"], "let key = x;", None, "test.rs"));
+        assert!(analyze_context(
+            &["# test value"],
+            "let key = x;",
+            None,
+            "test.rs"
+        ));
+        assert!(analyze_context(
+            &["example:"],
+            "let key = x;",
+            None,
+            "test.rs"
+        ));
     }
 
     #[test]

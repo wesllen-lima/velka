@@ -141,8 +141,7 @@ mod tests {
     #[test]
     fn test_scan_with_secret() {
         let config = VelkaConfig::default();
-        let result =
-            scan_content(r#"let key = "AKIA0000000000000000";"#, &config);
+        let result = scan_content(r#"let key = "AKIA0000000000000000";"#, &config);
         assert!(result.is_ok());
         let sins = result.unwrap();
         assert!(!sins.is_empty());

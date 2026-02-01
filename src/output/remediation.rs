@@ -61,7 +61,11 @@ fn snippet_parts(snippet: &str) -> Option<SnippetParts> {
     }
     if let Some(eq) = trimmed.find('=') {
         let lhs = trimmed[..eq].trim();
-        if lhs.chars().all(|c| c.is_alphanumeric() || c == '_' || c == ' ') && !lhs.is_empty() {
+        if lhs
+            .chars()
+            .all(|c| c.is_alphanumeric() || c == '_' || c == ' ')
+            && !lhs.is_empty()
+        {
             let name = lhs.split_whitespace().last().unwrap_or(lhs);
             if name.chars().all(|c| c.is_alphanumeric() || c == '_') {
                 return Some(SnippetParts {
@@ -76,10 +80,7 @@ fn snippet_parts(snippet: &str) -> Option<SnippetParts> {
 
 #[must_use]
 pub fn env_var_for_rule(rule_id: &str) -> &'static str {
-    ENV_VAR_MAP
-        .get(rule_id)
-        .copied()
-        .unwrap_or("SECRET_NAME")
+    ENV_VAR_MAP.get(rule_id).copied().unwrap_or("SECRET_NAME")
 }
 
 #[must_use]
