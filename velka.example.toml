@@ -15,6 +15,12 @@ ignore_paths = [
 # Default: 4.6, Range: 3.0 - 6.0
 entropy_threshold = 4.6
 
+# Advanced allowlist - regex and path-based false positive suppression
+# [scan.allowlist]
+# regexes = ["(?i)example", "(?i)test.*key"]
+# paths = ["**/fixtures/**", "**/*.example.*", "**/testdata/**"]
+# file_patterns = ["(?i)test_.*\\.py$", "(?i).*\\.spec\\.ts$"]
+
 # Whitelist patterns - matches containing these strings are ignored
 # Useful for reducing false positives on known-safe values
 whitelist = [
@@ -58,18 +64,18 @@ location = "both"
 # Example: disable = ["HARDCODED_IP", "JWT_TOKEN"]
 disable = []
 
-# Custom rules - define your own patterns
+# Custom rules - uncomment and customize as needed
 # [[rules.custom]]
 # id = "MY_INTERNAL_KEY"
 # pattern = "MYCOMPANY_[A-Z0-9]{32}"
 # severity = "Mortal"  # or "Venial"
 # description = "Internal API key detected"
-
-[[rules.custom]]
-id = "INTERNAL_API"
-pattern = "INTERNAL_[A-Z0-9]{24}"
-severity = "Mortal"
-description = "Internal API key detected"
+#
+# [[rules.custom]]
+# id = "INTERNAL_API"
+# pattern = "INTERNAL_[A-Z0-9]{24}"
+# severity = "Mortal"
+# description = "Internal API key detected"
 
 # Profiles - environment-specific overrides
 # Use with: velka scan . --profile ci

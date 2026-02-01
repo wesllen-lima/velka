@@ -21,10 +21,22 @@ pub struct VelkaConfig {
     pub profiles: HashMap<String, ProfileOverrides>,
 }
 
+#[derive(Debug, Clone, Deserialize, Default)]
+pub struct AllowlistConfig {
+    #[serde(default)]
+    pub regexes: Vec<String>,
+    #[serde(default)]
+    pub paths: Vec<String>,
+    #[serde(default)]
+    pub file_patterns: Vec<String>,
+}
+
 #[derive(Debug, Clone, Deserialize)]
 pub struct ScanConfig {
     #[serde(default = "default_ignore_paths")]
     pub ignore_paths: Vec<String>,
+    #[serde(default)]
+    pub allowlist: Option<AllowlistConfig>,
     #[serde(default = "default_entropy_threshold")]
     pub entropy_threshold: f32,
     #[serde(default)]
@@ -174,6 +186,7 @@ impl Default for ScanConfig {
     fn default() -> Self {
         Self {
             ignore_paths: default_ignore_paths(),
+            allowlist: None,
             entropy_threshold: default_entropy_threshold(),
             whitelist: Vec::new(),
             max_file_size_mb: default_max_file_size(),
@@ -206,15 +219,18 @@ impl Default for CacheConfig {
 impl VelkaConfig {
     pub fn load() -> Result<Self> {
         let config_path = std::path::Path::new("velka.toml");
-
         if !config_path.exists() {
             return Ok(Self::default());
         }
+        Self::load_from(config_path)
+    }
 
+    pub fn load_from(config_path: &std::path::Path) -> Result<Self> {
         let content = std::fs::read_to_string(config_path)?;
         let config: VelkaConfig =
             toml::from_str(&content).map_err(|e| VelkaError::Config(e.to_string()))?;
-
+        compile_allowlist_regexes(config.scan.allowlist.as_ref())?;
+        compile_allowlist_file_patterns(config.scan.allowlist.as_ref())?;
         Ok(config)
     }
 
@@ -291,6 +307,26 @@ impl VelkaConfig {
     }
 }
 
+pub fn compile_allowlist_regexes(allowlist: Option<&AllowlistConfig>) -> Result<Vec<Regex>> {
+    let Some(list) = allowlist else {
+        return Ok(Vec::new());
+    };
+    list.regexes
+        .iter()
+        .map(|s| Regex::new(s).map_err(|e| VelkaError::Config(e.to_string())))
+        .collect()
+}
+
+pub fn compile_allowlist_file_patterns(allowlist: Option<&AllowlistConfig>) -> Result<Vec<Regex>> {
+    let Some(list) = allowlist else {
+        return Ok(Vec::new());
+    };
+    list.file_patterns
+        .iter()
+        .map(|s| Regex::new(s).map_err(|e| VelkaError::Config(e.to_string())))
+        .collect()
+}
+
 #[cfg(test)]
 #[allow(clippy::float_cmp)]
 mod tests {
@@ -328,6 +364,38 @@ cache.enabled = false
         let config: VelkaConfig = toml::from_str(&content).unwrap();
         assert_eq!(config.scan.entropy_threshold, 5.0);
         assert_eq!(config.scan.whitelist, vec!["example.com"]);
+    }
+
+    #[test]
+    fn test_load_from_fails_on_invalid_allowlist_regex() {
+        let temp = tempfile::TempDir::new().unwrap();
+        let config_path = temp.path().join("velka.toml");
+        std::fs::write(
+            &config_path,
+            r#"
+[scan.allowlist]
+regexes = ["[invalid"]
+"#,
+        )
+        .unwrap();
+        let result = VelkaConfig::load_from(&config_path);
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_load_from_fails_on_invalid_allowlist_file_patterns() {
+        let temp = tempfile::TempDir::new().unwrap();
+        let config_path = temp.path().join("velka.toml");
+        std::fs::write(
+            &config_path,
+            r#"
+[scan.allowlist]
+file_patterns = ["(?invalid"]
+"#,
+        )
+        .unwrap();
+        let result = VelkaConfig::load_from(&config_path);
+        assert!(result.is_err());
     }
 
     #[test]

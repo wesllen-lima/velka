@@ -8,8 +8,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [1.2.0] - 2026-01-29
 
 ### Added
+- **Report format**: `--format report` for Before/After remediation (redacted snippets and suggested env-based replacement)
+- **Migrate to env**: `--migrate-to-env` to move secrets into `.env` and update source to use env vars; `--dry-run`, `--yes`, `--env-file`; migration report is metadata-only (no secret values). Use responsibly: ensure `.env` is in `.gitignore` and never commit it.
 - **Verification**: `--verify` flag to validate GitHub tokens via API (opt-in, network call)
 - **Stdin**: `velka stdin` to scan content from pipe (e.g. `git diff | velka stdin`)
+- **Benchmarks**: Cache cold vs cache hit benchmarks (`scan_1000_files_cache_cold`, `scan_1000_files_cache_hit`) in `benches/scan_bench.rs`; run with `cargo bench scan_1000_files_cache`
 - **VS Code**: MVP extension in `vscode-extension/` (command: Velka: Scan for secrets)
 - **GitHub Action**: `action.yml` for use as `uses: wesllen-lima/velka@main`
 - **Pre-commit**: `.pre-commit-hooks.yaml` for pre-commit framework

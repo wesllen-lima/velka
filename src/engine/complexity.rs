@@ -120,6 +120,8 @@ pub fn analyze_complexity(path: &Path, sender: &Sender<Sin>) -> Result<()> {
                                 rule_id: "COMPLEXITY_SIN".to_string(),
                                 commit_hash: None,
                                 verified: None,
+                                confidence: None,
+                                confidence_factors: None,
                             };
 
                             if tx.send(sin).is_err() {
@@ -159,6 +161,8 @@ pub fn analyze_complexity(path: &Path, sender: &Sender<Sin>) -> Result<()> {
                         rule_id: "COMPLEXITY_SIN".to_string(),
                         commit_hash: None,
                         verified: None,
+                        confidence: None,
+                        confidence_factors: None,
                     };
 
                     if tx.send(sin).is_err() {

@@ -7,6 +7,9 @@ use crate::domain::Severity;
 use crate::domain::Sin;
 use crate::engine::RULES;
 use crate::output::redact::{redact_line, RedactionConfig};
+use crate::output::report::build_report;
+use crate::output::remediation::suggest_remediation;
+use crate::output::Report;
 use crate::utils::{calculate_entropy, extract_quoted_string_contents};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -18,6 +21,7 @@ pub enum OutputFormat {
     Sarif,
     Markdown,
     Html,
+    Report,
 }
 
 impl std::str::FromStr for OutputFormat {
@@ -32,7 +36,8 @@ impl std::str::FromStr for OutputFormat {
             "sarif" => Ok(Self::Sarif),
             "markdown" | "md" => Ok(Self::Markdown),
             "html" => Ok(Self::Html),
-            _ => Err(format!("Unknown format: {s}. Valid options: terminal, json, csv, junit, sarif, markdown, html")),
+            "report" => Ok(Self::Report),
+            _ => Err(format!("Unknown format: {s}. Valid options: terminal, json, csv, junit, sarif, markdown, html, report")),
         }
     }
 }
@@ -55,6 +60,10 @@ struct RedactedSin {
     commit_hash: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     verified: Option<bool>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    confidence: Option<f32>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    confidence_factors: Option<Vec<String>>,
 }
 
 #[derive(Serialize)]
@@ -78,6 +87,10 @@ pub fn format_output(
         OutputFormat::Sarif => format_sarif(&sins, redaction),
         OutputFormat::Markdown => format_markdown(&sins, redaction, ci_mode),
         OutputFormat::Html => format_html(&sins, redaction, ci_mode),
+        OutputFormat::Report => {
+            let report = build_report(sins);
+            format_report_html(&report, redaction)
+        }
     }
 }
 
@@ -268,6 +281,8 @@ fn format_json(sins: Vec<Sin>, redaction: &RedactionConfig) -> String {
                 rule_id: sin.rule_id,
                 commit_hash: sin.commit_hash,
                 verified: sin.verified,
+                confidence: sin.confidence,
+                confidence_factors: sin.confidence_factors,
             }
         })
         .collect();
@@ -567,6 +582,110 @@ fn format_html(sins: &[Sin], redaction: &RedactionConfig, _ci_mode: bool) -> Str
     html
 }
 
+fn escape_html(s: &str) -> String {
+    s.replace('&', "&amp;")
+        .replace('<', "&lt;")
+        .replace('>', "&gt;")
+        .replace('"', "&quot;")
+        .replace('\'', "&apos;")
+}
+
+fn format_report_html(report: &Report, redaction: &RedactionConfig) -> String {
+    let total = report.mortal_count + report.venial_count;
+    let mut html = String::from(
+        r#"<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Velka - From Chaos to Virtue</title>
+    <style>
+        body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; margin: 2rem; background: #1a1a2e; color: #eee; }
+        .title { font-size: 1.75rem; margin-bottom: 0.25rem; }
+        .title-chaos { color: #e94560; }
+        .title-virtue { color: #4ade80; }
+        .subtitle { color: #94a3b8; margin-bottom: 2rem; }
+        .summary-bad { background: #7f1d1d; color: #fecaca; padding: 0.75rem 1rem; border-radius: 8px; margin-bottom: 2rem; display: inline-block; }
+        .summary-ok { background: #14532d; color: #bbf7d0; padding: 0.75rem 1rem; border-radius: 8px; margin-bottom: 2rem; display: inline-block; }
+        .file-section { margin-bottom: 2rem; }
+        .file-path { font-family: monospace; color: #94a3b8; margin-bottom: 0.5rem; }
+        .panels { display: flex; gap: 1rem; flex-wrap: wrap; }
+        .panel { flex: 1; min-width: 280px; border-radius: 8px; overflow: hidden; }
+        .panel-before { background: #7f1d1d; border: 1px solid #b91c1c; }
+        .panel-after { background: #14532d; border: 1px solid #15803d; }
+        .panel-header { padding: 0.5rem 1rem; font-weight: bold; color: #fff; }
+        .panel-before .panel-header { background: #991b1b; }
+        .panel-after .panel-header { background: #166534; }
+        .panel-body { padding: 1rem; font-family: 'Fira Code', 'Consolas', monospace; font-size: 0.875rem; white-space: pre-wrap; word-break: break-all; }
+        .panel-body code { background: transparent; padding: 0; }
+    </style>
+</head>
+<body>
+    <h1 class="title">From <span class="title-chaos">Chaos</span> to <span class="title-virtue">Virtue</span></h1>
+    <p class="subtitle">Witness the transformation that Velka brings to your codebase.</p>
+"#,
+    );
+
+    if total == 0 {
+        let _ = writeln!(
+            html,
+            r#"    <div class="summary-ok">Clean – Zero hardcoded secrets</div>"#
+        );
+    } else {
+        let _ = writeln!(
+            html,
+            r#"    <div class="summary-bad">{total} sins found</div>"#
+        );
+    }
+
+    for file_report in &report.files {
+        let path_esc = escape_html(&file_report.path);
+        let _ = writeln!(
+            html,
+            r#"    <div class="file-section">
+        <div class="file-path">{path_esc}</div>
+        <div class="panels">
+            <div class="panel panel-before">
+                <div class="panel-header">BEFORE VELKA</div>
+                <div class="panel-body">
+"#
+        );
+        for sin in &file_report.sins {
+            let before = redact_line(&sin.snippet, &sin.rule_id, redaction);
+            let before_esc = escape_html(&before);
+            let _ = writeln!(html, "{before_esc}");
+        }
+        html.push_str(
+            r#"                </div>
+            </div>
+            <div class="panel panel-after">
+                <div class="panel-header">AFTER VELKA</div>
+                <div class="panel-body">
+"#,
+        );
+        for sin in &file_report.sins {
+            let after = suggest_remediation(sin);
+            let after_esc = escape_html(&after);
+            let _ = writeln!(html, "{after_esc}");
+        }
+        html.push_str(
+            r"                </div>
+            </div>
+        </div>
+    </div>
+",
+        );
+    }
+
+    html.push_str(
+        r"</body>
+</html>
+",
+    );
+
+    html
+}
+
 fn escape_xml(s: &str) -> String {
     s.replace('&', "&amp;")
         .replace('<', "&lt;")
@@ -594,6 +713,8 @@ mod tests {
             rule_id: "AWS_ACCESS_KEY".to_string(),
             commit_hash: None,
             verified: None,
+            confidence: None,
+            confidence_factors: None,
         }
     }
 
@@ -673,6 +794,43 @@ mod tests {
         assert!(output.contains("<html"));
         assert!(output.contains("<table"));
         assert!(output.contains("test.rs"));
+    }
+
+    #[test]
+    fn test_format_report_html_contains_before_after() {
+        let sins = vec![sample_sin()];
+        let redaction = RedactionConfig {
+            enabled: true,
+            visible_chars: 4,
+        };
+        let output = format_output(sins.clone(), OutputFormat::Report, &redaction, false);
+        assert!(output.contains("BEFORE VELKA"));
+        assert!(output.contains("AFTER VELKA"));
+        assert!(output.contains("process.env.AWS_ACCESS_KEY_ID"));
+        assert!(output.contains("From Chaos to Virtue"));
+    }
+
+    #[test]
+    fn test_format_report_html_redacts_before_no_secret_in_output() {
+        let sins = vec![sample_sin()];
+        let redaction = RedactionConfig {
+            enabled: true,
+            visible_chars: 4,
+        };
+        let output = format_output(sins, OutputFormat::Report, &redaction, false);
+        assert!(
+            !output.contains("AKIAIOSFODNN7EXAMPLE"),
+            "Report output must not contain raw secret"
+        );
+    }
+
+    #[test]
+    fn test_format_report_empty_shows_clean() {
+        let sins: Vec<Sin> = vec![];
+        let redaction = RedactionConfig::default();
+        let output = format_output(sins, OutputFormat::Report, &redaction, false);
+        assert!(output.contains("Clean"));
+        assert!(output.contains("Zero hardcoded secrets"));
     }
 
     #[test]

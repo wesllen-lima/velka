@@ -122,6 +122,7 @@ pub fn scan_history(repo_path: &Path, config: &VelkaConfig, sender: &Sender<Sin>
                             whitelist: &wl,
                             custom_rules: &custom,
                             skip_entropy_in_regex_context: true,
+                            allowlist_regexes: None,
                         };
 
                         let ctx_refs: [&str; 3] = [&ctx_lines[0], &ctx_lines[1], &ctx_lines[2]];
