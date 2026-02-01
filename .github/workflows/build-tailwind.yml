@@ -5,6 +5,8 @@ on:
     branches: [ main, master ]
   workflow_dispatch:
 
+permissions:
+  contents: write
 jobs:
   build:
     if: github.actor != 'github-actions[bot]'
