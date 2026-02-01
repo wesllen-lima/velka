@@ -1,0 +1,33 @@
+name: Auto Release on main
+
+on:
+  push:
+    branches: [ main, master ]
+
+permissions:
+  contents: write
+  releases: write
+
+jobs:
+  tag-and-release:
+    name: Tag and create Release
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Create tag (semver patch bump)
+        id: tag
+        uses: anothrNick/github-tag-action@v1.38.0
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          tag_prefix: "v"
+          release_branches: "main,master"
+
+      - name: Create GitHub Release
+        uses: ncipollo/release-action@v1
+        with:
+          tag: ${{ steps.tag.outputs.new_tag }}
+          name: ${{ steps.tag.outputs.new_tag }}
+          draft: false
+          prerelease: false
