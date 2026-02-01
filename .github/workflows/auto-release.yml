@@ -6,7 +6,6 @@ on:
 
 permissions:
   contents: write
-  releases: write
 
 jobs:
   tag-and-release:
@@ -15,6 +14,9 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          persist-credentials: true
 
       - name: Create tag (semver patch bump)
         id: tag
