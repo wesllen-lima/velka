@@ -1,0 +1,11 @@
+{
+  "name": "velka-docs-build",
+  "version": "1.0.0",
+  "private": true,
+  "devDependencies": {
+    "tailwindcss": "^3.4.8"
+  },
+  "scripts": {
+    "build:css": "npx tailwindcss -i input.css -o tailwind.css --minify"
+  }
+}
