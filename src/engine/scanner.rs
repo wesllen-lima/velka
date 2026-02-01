@@ -8,7 +8,6 @@ use glob::Pattern;
 use indicatif::{ProgressBar, ProgressStyle};
 
 use crate::config::{compile_allowlist_file_patterns, compile_allowlist_regexes, VelkaConfig};
-use regex::Regex;
 use crate::domain::Severity;
 use crate::domain::Sin;
 use crate::engine::analyzer::{analyze_line, AnalyzeLineConfig};
@@ -18,6 +17,7 @@ use crate::engine::rules::CompiledCustomRule;
 use crate::engine::verifier::{self, compute_confidence};
 use crate::utils::build_context;
 use chrono::Utc;
+use regex::Regex;
 
 #[derive(Debug, Clone, Copy)]
 struct IgnoreRange {
@@ -359,8 +359,7 @@ pub fn investigate_with_progress(
         (None, 1_u64, 0_u64)
     };
 
-    let cache_pending: Arc<Mutex<Vec<(String, CacheEntry)>>> =
-        Arc::new(Mutex::new(Vec::new()));
+    let cache_pending: Arc<Mutex<Vec<(String, CacheEntry)>>> = Arc::new(Mutex::new(Vec::new()));
     let progress_counter = Arc::new(AtomicU64::new(0));
 
     let walker = ignore::WalkBuilder::new(path)
@@ -408,7 +407,10 @@ pub fn investigate_with_progress(
                 return ignore::WalkState::Continue;
             }
             if let Some(ref file_patterns) = allowlist_file_patterns {
-                if file_patterns.iter().any(|re| re.is_match(path_str.as_ref())) {
+                if file_patterns
+                    .iter()
+                    .any(|re| re.is_match(path_str.as_ref()))
+                {
                     return ignore::WalkState::Continue;
                 }
             }

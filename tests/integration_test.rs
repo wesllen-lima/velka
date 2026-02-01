@@ -313,12 +313,7 @@ fn test_report_format_output_redacted() {
     .unwrap();
 
     let assert = velka()
-        .args([
-            "scan",
-            temp.path().to_str().unwrap(),
-            "--format",
-            "report",
-        ])
+        .args(["scan", temp.path().to_str().unwrap(), "--format", "report"])
         .assert()
         .code(1);
     let output = assert.get_output();
@@ -376,11 +371,7 @@ fn test_migrate_apply_creates_env_no_secret_in_output() {
         .output();
     fs::write(temp.path().join(".gitignore"), ".env\n").unwrap();
     let src = temp.path().join("app.js");
-    fs::write(
-        &src,
-        r#"const AWS_KEY = "AKIA0000000000000000";"#,
-    )
-    .unwrap();
+    fs::write(&src, r#"const AWS_KEY = "AKIA0000000000000000";"#).unwrap();
 
     let assert = velka()
         .args([

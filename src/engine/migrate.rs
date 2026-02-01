@@ -104,9 +104,7 @@ pub fn check_env_tracked(repo_root: &Path, env_path: &Path) -> Result<bool> {
     let Ok(repo) = git2::Repository::open(repo_root) else {
         return Ok(false);
     };
-    let rel = env_path
-        .strip_prefix(repo_root)
-        .unwrap_or(env_path);
+    let rel = env_path.strip_prefix(repo_root).unwrap_or(env_path);
     let rel_str = rel.to_string_lossy().replace('\\', "/");
     let index = repo.index()?;
     Ok(index.get_path(Path::new(rel_str.as_str()), 0).is_some())
@@ -127,7 +125,9 @@ pub fn run_migrate(
         path.join(env_file)
     };
 
-    let path_canon = path.canonicalize().map_err(|e| VelkaError::InvalidPath(e.to_string()))?;
+    let path_canon = path
+        .canonicalize()
+        .map_err(|e| VelkaError::InvalidPath(e.to_string()))?;
     let env_canon = env_path_for_check
         .canonicalize()
         .unwrap_or_else(|_| env_path_for_check.clone());
@@ -183,7 +183,9 @@ pub fn run_migrate(
     if dry_run {
         report.migrated_count = to_append.len();
         for path_buf in file_edits.keys() {
-            report.files_updated.push(path_buf.to_string_lossy().to_string());
+            report
+                .files_updated
+                .push(path_buf.to_string_lossy().to_string());
         }
         return Ok(report);
     }
@@ -214,7 +216,11 @@ pub fn run_migrate(
     for (file_path, edits) in file_edits {
         let full_path = path.join(&file_path);
         let content = fs::read_to_string(&full_path)?;
-        let line_ending = if content.contains("\r\n") { "\r\n" } else { "\n" };
+        let line_ending = if content.contains("\r\n") {
+            "\r\n"
+        } else {
+            "\n"
+        };
         let mut lines: Vec<String> = content.lines().map(String::from).collect();
         for (line_num, old_line, new_line) in edits {
             if line_num > 0 && line_num <= lines.len() {
@@ -227,7 +233,9 @@ pub fn run_migrate(
         let new_content = lines.join(line_ending);
         if new_content != content {
             fs::write(&full_path, new_content)?;
-            report.files_updated.push(file_path.to_string_lossy().to_string());
+            report
+                .files_updated
+                .push(file_path.to_string_lossy().to_string());
         }
     }
 
@@ -252,10 +260,18 @@ pub fn format_migrate_report(report: &MigrateReport) -> String {
         }
     }
     if report.skipped_unable_extract > 0 {
-        let _ = writeln!(out, "Skipped (unable to extract): {}", report.skipped_unable_extract);
+        let _ = writeln!(
+            out,
+            "Skipped (unable to extract): {}",
+            report.skipped_unable_extract
+        );
     }
     if report.skipped_key_present > 0 {
-        let _ = writeln!(out, "Skipped (key already present): {}", report.skipped_key_present);
+        let _ = writeln!(
+            out,
+            "Skipped (key already present): {}",
+            report.skipped_key_present
+        );
     }
     out
 }

@@ -18,15 +18,15 @@ pub struct FileReport {
 
 #[must_use]
 pub fn build_report(sins: Vec<Sin>) -> Report {
-    let mortal_count = sins.iter().filter(|s| s.severity == Severity::Mortal).count();
+    let mortal_count = sins
+        .iter()
+        .filter(|s| s.severity == Severity::Mortal)
+        .count();
     let venial_count = sins.len() - mortal_count;
 
     let mut by_path: HashMap<String, Vec<Sin>> = HashMap::new();
     for sin in sins {
-        by_path
-            .entry(sin.path.clone())
-            .or_default()
-            .push(sin);
+        by_path.entry(sin.path.clone()).or_default().push(sin);
     }
 
     let mut files: Vec<FileReport> = by_path

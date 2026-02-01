@@ -17,8 +17,9 @@ static GITHUB_TOKEN_RE: LazyLock<Regex> =
     LazyLock::new(|| Regex::new(r"gh[pousr]_[A-Za-z0-9_]{36,}").expect("github token regex"));
 static STRIPE_SECRET_RE: LazyLock<Regex> =
     LazyLock::new(|| Regex::new(r"sk_(?:live|test)_[0-9a-zA-Z]{24,}").expect("stripe regex"));
-static SENDGRID_API_RE: LazyLock<Regex> =
-    LazyLock::new(|| Regex::new(r"SG\.[a-zA-Z0-9_-]{22}\.[a-zA-Z0-9_-]{43}").expect("sendgrid regex"));
+static SENDGRID_API_RE: LazyLock<Regex> = LazyLock::new(|| {
+    Regex::new(r"SG\.[a-zA-Z0-9_-]{22}\.[a-zA-Z0-9_-]{43}").expect("sendgrid regex")
+});
 static SLACK_WEBHOOK_RE: LazyLock<Regex> = LazyLock::new(|| {
     Regex::new(r"https://hooks\.slack\.com/services/T[A-Z0-9]+/B[A-Z0-9]+/[a-zA-Z0-9]+")
         .expect("slack webhook regex")

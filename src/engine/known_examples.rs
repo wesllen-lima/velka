@@ -1,9 +1,6 @@
 pub static KNOWN_EXAMPLE_SECRETS: &[(&str, &str)] = &[
     ("AWS_ACCESS_KEY", "AKIAIOSFODNN7EXAMPLE"),
-    (
-        "AWS_SECRET_KEY",
-        "wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY",
-    ),
+    ("AWS_SECRET_KEY", "wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY"),
     ("GOOGLE_API_KEY", "AIzaSyA1234567890abcdefghijklmnopqrstu"),
     (
         "SLACK_WEBHOOK",
@@ -49,15 +46,15 @@ mod tests {
 
     #[test]
     fn test_aws_example_exact() {
-        assert!(is_known_example(
-            "AWS_ACCESS_KEY",
-            "AKIAIOSFODNN7EXAMPLE"
-        ));
+        assert!(is_known_example("AWS_ACCESS_KEY", "AKIAIOSFODNN7EXAMPLE"));
     }
 
     #[test]
     fn test_aws_example_suffix() {
-        assert!(is_known_example("AWS_ACCESS_KEY", "AKIAXXXXXXXXXXXXEXAMPLE"));
+        assert!(is_known_example(
+            "AWS_ACCESS_KEY",
+            "AKIAXXXXXXXXXXXXEXAMPLE"
+        ));
     }
 
     #[test]
