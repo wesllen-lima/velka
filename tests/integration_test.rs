@@ -47,7 +47,7 @@ fn test_detect_aws_key() {
     let temp = TempDir::new().unwrap();
     fs::write(
         temp.path().join("secrets.rs"),
-        r#"let key = "AKIAIOSFODNN7EXAMPLE";"#,
+        r#"let key = "AKIA0000000000000000";"#,
     )
     .unwrap();
 
@@ -79,7 +79,7 @@ fn test_redaction_enabled_by_default() {
     let temp = TempDir::new().unwrap();
     fs::write(
         temp.path().join("aws.rs"),
-        r#"let key = "AKIAIOSFODNN7EXAMPLE";"#,
+        r#"let key = "AKIA0000000000000000";"#,
     )
     .unwrap();
 
@@ -95,7 +95,7 @@ fn test_no_redact_flag() {
     let temp = TempDir::new().unwrap();
     fs::write(
         temp.path().join("aws.rs"),
-        r#"let key = "AKIAIOSFODNN7EXAMPLE";"#,
+        r#"let key = "AKIA0000000000000000";"#,
     )
     .unwrap();
 
@@ -103,7 +103,7 @@ fn test_no_redact_flag() {
         .args(["scan", temp.path().to_str().unwrap(), "--no-redact"])
         .assert()
         .code(1)
-        .stdout(predicate::str::contains("AKIAIOSFODNN7EXAMPLE"));
+        .stdout(predicate::str::contains("AKIA0000000000000000"));
 }
 
 #[test]
@@ -113,7 +113,7 @@ fn test_mortal_only_flag() {
         temp.path().join("mixed.py"),
         r#"
 ip = "192.168.1.1"
-key = "AKIAIOSFODNN7EXAMPLE"
+key = "AKIA0000000000000000"
 "#,
     )
     .unwrap();
@@ -139,7 +139,7 @@ fn test_json_output() {
     let temp = TempDir::new().unwrap();
     fs::write(
         temp.path().join("test.rs"),
-        r#"let key = "AKIAIOSFODNN7EXAMPLE";"#,
+        r#"let key = "AKIA0000000000000000";"#,
     )
     .unwrap();
 
@@ -156,7 +156,7 @@ fn test_csv_output() {
     let temp = TempDir::new().unwrap();
     fs::write(
         temp.path().join("test.rs"),
-        r#"let key = "AKIAIOSFODNN7EXAMPLE";"#,
+        r#"let key = "AKIA0000000000000000";"#,
     )
     .unwrap();
 
@@ -172,7 +172,7 @@ fn test_junit_output() {
     let temp = TempDir::new().unwrap();
     fs::write(
         temp.path().join("test.rs"),
-        r#"let key = "AKIAIOSFODNN7EXAMPLE";"#,
+        r#"let key = "AKIA0000000000000000";"#,
     )
     .unwrap();
 
@@ -189,7 +189,7 @@ fn test_sarif_output() {
     let temp = TempDir::new().unwrap();
     fs::write(
         temp.path().join("test.rs"),
-        r#"let key = "AKIAIOSFODNN7EXAMPLE";"#,
+        r#"let key = "AKIA0000000000000000";"#,
     )
     .unwrap();
 
@@ -206,7 +206,7 @@ fn test_markdown_output() {
     let temp = TempDir::new().unwrap();
     fs::write(
         temp.path().join("test.rs"),
-        r#"let key = "AKIAIOSFODNN7EXAMPLE";"#,
+        r#"let key = "AKIA0000000000000000";"#,
     )
     .unwrap();
 
@@ -227,7 +227,7 @@ fn test_html_output() {
     let temp = TempDir::new().unwrap();
     fs::write(
         temp.path().join("test.rs"),
-        r#"let key = "AKIAIOSFODNN7EXAMPLE";"#,
+        r#"let key = "AKIA0000000000000000";"#,
     )
     .unwrap();
 
@@ -244,7 +244,7 @@ fn test_velka_ignore_comment() {
     let temp = TempDir::new().unwrap();
     fs::write(
         temp.path().join("ignored.rs"),
-        r#"let key = "AKIAIOSFODNN7EXAMPLE"; // velka:ignore"#,
+        r#"let key = "AKIA0000000000000000"; // velka:ignore"#,
     )
     .unwrap();
 
@@ -260,7 +260,7 @@ fn test_exit_code_on_mortal_sin() {
     let temp = TempDir::new().unwrap();
     fs::write(
         temp.path().join("fatal.rs"),
-        r#"let key = "AKIAIOSFODNN7EXAMPLE";"#,
+        r#"let key = "AKIA0000000000000000";"#,
     )
     .unwrap();
 
@@ -283,7 +283,7 @@ fn test_exit_code_clean() {
 
 #[test]
 fn test_stdin_detects_secret() {
-    let input = r#"let key = "AKIAIOSFODNN7EXAMPLE";"#;
+    let input = r#"let key = "AKIA0000000000000000";"#;
     velka()
         .write_stdin(input)
         .args(["stdin", "--format", "json"])
@@ -301,4 +301,109 @@ fn test_stdin_clean_exit_zero() {
         .assert()
         .success()
         .stdout(predicate::str::contains("No sins found"));
+}
+
+#[test]
+fn test_report_format_output_redacted() {
+    let temp = TempDir::new().unwrap();
+    fs::write(
+        temp.path().join("config.js"),
+        r#"const AWS_KEY = "AKIA0000000000000000";"#,
+    )
+    .unwrap();
+
+    let assert = velka()
+        .args([
+            "scan",
+            temp.path().to_str().unwrap(),
+            "--format",
+            "report",
+        ])
+        .assert()
+        .code(1);
+    let output = assert.get_output();
+    let stdout = String::from_utf8(output.stdout.clone()).unwrap();
+    assert!(stdout.contains("BEFORE VELKA"));
+    assert!(stdout.contains("AFTER VELKA"));
+    assert!(stdout.contains("process.env.AWS_ACCESS_KEY_ID"));
+    assert!(
+        !stdout.contains("AKIA0000000000000000"),
+        "Report must not contain raw secret"
+    );
+}
+
+#[test]
+fn test_migrate_dry_run_no_files_changed() {
+    let temp = TempDir::new().unwrap();
+    let _ = std::process::Command::new("git")
+        .args(["init"])
+        .current_dir(temp.path())
+        .output();
+    fs::write(temp.path().join(".gitignore"), ".env\n").unwrap();
+    fs::write(
+        temp.path().join("config.js"),
+        r#"const AWS_KEY = "AKIA0000000000000000";"#,
+    )
+    .unwrap();
+
+    let assert = velka()
+        .args([
+            "scan",
+            temp.path().to_str().unwrap(),
+            "--migrate-to-env",
+            "--dry-run",
+        ])
+        .assert()
+        .success();
+    let stdout = String::from_utf8(assert.get_output().stdout.clone()).unwrap();
+    assert!(
+        !stdout.contains("AKIA0000000000000000"),
+        "Dry-run output must not contain raw secret"
+    );
+    assert!(stdout.contains("Migrated") || stdout.contains("Variables added"));
+    assert!(
+        !temp.path().join(".env").exists(),
+        "Dry-run must not create .env"
+    );
+}
+
+#[test]
+fn test_migrate_apply_creates_env_no_secret_in_output() {
+    let temp = TempDir::new().unwrap();
+    let _ = std::process::Command::new("git")
+        .args(["init"])
+        .current_dir(temp.path())
+        .output();
+    fs::write(temp.path().join(".gitignore"), ".env\n").unwrap();
+    let src = temp.path().join("app.js");
+    fs::write(
+        &src,
+        r#"const AWS_KEY = "AKIA0000000000000000";"#,
+    )
+    .unwrap();
+
+    let assert = velka()
+        .args([
+            "scan",
+            temp.path().to_str().unwrap(),
+            "--migrate-to-env",
+            "--yes",
+        ])
+        .assert()
+        .success();
+    let stdout = String::from_utf8(assert.get_output().stdout.clone()).unwrap();
+    assert!(
+        !stdout.contains("AKIA0000000000000000"),
+        "Migrate output must not contain raw secret"
+    );
+
+    let env_path = temp.path().join(".env");
+    assert!(env_path.exists(), ".env must be created");
+    let env_content = fs::read_to_string(&env_path).unwrap();
+    assert!(env_content.contains("AWS_ACCESS_KEY_ID="));
+    let app_content = fs::read_to_string(&src).unwrap();
+    assert!(
+        app_content.contains("process.env.AWS_ACCESS_KEY_ID"),
+        "Source must be updated to use env"
+    );
 }

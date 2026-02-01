@@ -1,5 +1,9 @@
 # VELKA
 
+**English** | [Português (BR)](README.pt-BR.md)
+
+---
+
 **The Code Sin Judge**
 
 [![Rust](https://img.shields.io/badge/Rust-1.70%2B-orange?logo=rust)](https://www.rust-lang.org/)
@@ -103,6 +107,7 @@ velka scan . --format junit    # CI dashboards
 velka scan . --format sarif    # GitHub Code Scanning
 velka scan . --format markdown
 velka scan . --format html
+velka scan . --format report   # Before/After remediation (redacted)
 
 # Use configuration profile
 velka scan . --profile ci
@@ -112,6 +117,12 @@ velka scan . --no-redact
 
 # Verify secrets via API (opt-in; makes network calls for GitHub token, etc.)
 velka scan . --verify
+
+# Migrate secrets to .env and update source (opt-in; requires .env in .gitignore)
+velka scan . --migrate-to-env --dry-run   # Preview only
+velka scan . --migrate-to-env --yes       # Apply without confirmation
+velka scan . --migrate-to-env             # Interactive confirmation
+velka scan . --migrate-to-env --env-file .env.local
 
 # Scan from stdin (e.g. pipe from git diff)
 git diff | velka stdin
@@ -291,17 +302,29 @@ velka install-hook
 - **Compiled Regex**: All patterns compiled once via `std::sync::LazyLock`
 - **Lock-free Channels**: `crossbeam-channel` for zero-contention
 - **Smart Skipping**: Binary detection via magic bytes, minified code skipped
+- **Batch Cache Writes**: Cache misses are buffered and flushed once per run to reduce RwLock contention
 
 ### Benchmarks
 
-Run `cargo bench` to reproduce. Typical results (release build, cache disabled):
+Run `cargo bench` to reproduce. Benchmarks live in `benches/scan_bench.rs`.
 
-| Files | Velka (median) |
-|-------|----------------|
-| 100   | ~2 ms          |
-| 1,000 | ~4.5 ms        |
-| 5,000 | ~12 ms         |
-| 10,000| ~21 ms         |
+**Throughput (cache disabled):**
+
+| Files | Benchmark name       | Typical median |
+|-------|----------------------|----------------|
+| 100   | `scan_100_files`     | ~2 ms          |
+| 1,000 | `scan_1000_files`    | ~4.5 ms        |
+| 5,000 | `scan_5000_files`    | ~12 ms         |
+| 10,000| `scan_10000_files`    | ~21 ms         |
+
+**Cache impact (1,000 files, cache enabled):**
+
+| Benchmark name              | Description                          |
+|-----------------------------|--------------------------------------|
+| `scan_1000_files_cache_cold`| First run: full scan, cache populated|
+| `scan_1000_files_cache_hit` | Second run: cache hit, no re-scan    |
+
+Run only cache benchmarks: `cargo bench scan_1000_files_cache`. Run a single bench: `cargo bench scan_1000_files`.
 
 Velka is designed to be significantly faster than alternatives (e.g. TruffleHog, detect-secrets) due to Rust's zero-cost abstractions, parallel file walking, and memory-mapped I/O. Run both on your codebase to compare.
 

@@ -11,8 +11,9 @@ use velka::config::VelkaConfig;
 use velka::domain::Severity;
 use velka::domain::Sin;
 use velka::engine::{
-    analyze_complexity, get_changed_files, get_staged_files, investigate_with_progress,
-    scan_content, scan_history, scan_single_file, ScanCache,
+    analyze_complexity, format_migrate_report, get_changed_files, get_staged_files,
+    investigate_with_progress, run_migrate, scan_content, scan_history, scan_single_file,
+    ScanCache,
 };
 use velka::output::{format_output, OutputFormat, RedactionConfig};
 
@@ -127,7 +128,7 @@ struct ScanArgs {
         long,
         short,
         default_value = "terminal",
-        help = "Output format: terminal, json, csv, junit, sarif, markdown, html"
+        help = "Output format: terminal, json, csv, junit, sarif, markdown, html, report"
     )]
     format: OutputFormat,
 
@@ -166,6 +167,18 @@ struct ScanArgs {
         help = "Verify secrets via API (GitHub token, etc.; makes network calls)"
     )]
     verify: bool,
+
+    #[arg(long, help = "Migrate secrets to .env and update source files")]
+    migrate_to_env: bool,
+
+    #[arg(long, help = "Path to .env file (default: .env)", default_value = ".env")]
+    env_file: Option<PathBuf>,
+
+    #[arg(long, help = "Show what would be done without writing")]
+    dry_run: bool,
+
+    #[arg(long, help = "Apply migration without confirmation")]
+    yes: bool,
 }
 
 #[derive(Parser)]
@@ -174,7 +187,7 @@ struct StdinArgs {
         long,
         short,
         default_value = "terminal",
-        help = "Output format: terminal, json, csv, junit, sarif, markdown, html"
+        help = "Output format: terminal, json, csv, junit, sarif, markdown, html, report"
     )]
     format: OutputFormat,
 
@@ -247,6 +260,10 @@ fn run_stdin(args: &StdinArgs) -> Result<()> {
 
 fn run_scan(args: &ScanArgs) -> Result<()> {
     let path = validate_scan_path(&args.path)?;
+
+    if args.migrate_to_env {
+        return run_migrate_flow(&path, args);
+    }
 
     let mut config = VelkaConfig::load()?;
 
@@ -406,6 +423,42 @@ fn run_init(args: &InitArgs) -> Result<()> {
         config_path.display()
     );
 
+    Ok(())
+}
+
+fn run_migrate_flow(path: &Path, args: &ScanArgs) -> Result<()> {
+    let env_file = args.env_file.as_deref().unwrap_or(Path::new(".env"));
+
+    if args.dry_run {
+        let report = run_migrate(path, env_file, true, false)
+            .map_err(|e| anyhow::anyhow!("{e}"))?;
+        println!("{}", format_migrate_report(&report));
+        return Ok(());
+    }
+
+    if args.yes {
+        let report = run_migrate(path, env_file, false, true)
+            .map_err(|e| anyhow::anyhow!("{e}"))?;
+        println!("{}", format_migrate_report(&report));
+        return Ok(());
+    }
+
+    let preview = run_migrate(path, env_file, true, false)
+        .map_err(|e| anyhow::anyhow!("{e}"))?;
+    println!("{}", format_migrate_report(&preview));
+    print!(
+        "Will update {} file(s) and create/update .env. Proceed? [y/N] ",
+        preview.files_updated.len()
+    );
+    std::io::Write::flush(&mut std::io::stdout())?;
+    let mut buf = String::new();
+    if std::io::stdin().read_line(&mut buf).is_ok()
+        && (buf.trim().eq_ignore_ascii_case("y") || buf.trim().eq_ignore_ascii_case("yes"))
+    {
+        let report = run_migrate(path, env_file, false, true)
+            .map_err(|e| anyhow::anyhow!("{e}"))?;
+        println!("{}", format_migrate_report(&report));
+    }
     Ok(())
 }
 

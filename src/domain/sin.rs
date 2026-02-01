@@ -24,6 +24,10 @@ pub struct Sin {
     pub commit_hash: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub verified: Option<bool>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub confidence: Option<f32>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub confidence_factors: Option<Vec<String>>,
 }
 
 pub struct Rule {

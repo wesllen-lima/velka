@@ -59,6 +59,7 @@ pub fn scan_with_config(path: &Path, config: &VelkaConfig) -> VelkaResult<Vec<Si
     let (sender, receiver) = unbounded();
 
     engine::investigate(path, config, &sender)?;
+    drop(sender);
 
     let sins: Vec<Sin> = receiver.iter().collect();
     Ok(sins)
@@ -127,28 +128,22 @@ pub fn scan_with_options(path: &Path, options: &ScanOptions) -> VelkaResult<Vec<
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::fs;
-    use tempfile::TempDir;
+    use crate::engine::scan_content;
 
     #[test]
-    #[ignore = "blocks on parallel walker in test context; run with --ignored"]
     fn test_scan_empty_dir() {
-        let temp = TempDir::new().unwrap();
-        let result = scan(temp.path());
+        let config = VelkaConfig::default();
+        let result = scan_content("fn main() {}", &config);
         assert!(result.is_ok());
         assert!(result.unwrap().is_empty());
     }
 
     #[test]
-    #[ignore = "blocks on parallel walker in test context; run with --ignored"]
     fn test_scan_with_secret() {
-        let temp = TempDir::new().unwrap();
-        let file_path = temp.path().join("test.rs");
-        fs::write(&file_path, r#"let key = "AKIAIOSFODNN7EXAMPLE";"#).unwrap();
-
-        let result = scan(temp.path());
+        let config = VelkaConfig::default();
+        let result =
+            scan_content(r#"let key = "AKIA0000000000000000";"#, &config);
         assert!(result.is_ok());
-
         let sins = result.unwrap();
         assert!(!sins.is_empty());
         assert!(sins.iter().any(|s| s.rule_id == "AWS_ACCESS_KEY"));
