@@ -115,6 +115,13 @@ impl ScanCache {
         self.modified = true;
     }
 
+    pub fn insert_batch(&mut self, entries: impl IntoIterator<Item = (String, CacheEntry)>) {
+        for (path, entry) in entries {
+            self.entries.insert(path, entry);
+        }
+        self.modified = true;
+    }
+
     #[must_use]
     pub fn hash_content(content: &[u8]) -> String {
         let mut hasher = Sha256::new();

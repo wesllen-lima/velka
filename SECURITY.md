@@ -50,6 +50,15 @@ Velka follows these security principles:
 - Pre-commit hook safety checks
 - No network calls during scanning (unless `--verify` is used to validate tokens)
 
+### Migrate to env
+
+When using `--migrate-to-env`:
+
+1. **Secrets never in report**: The migration report contains only metadata (count of migrated secrets, file paths, variable names). No secret value appears in stdout, logs, or any generated report.
+2. **`.env` handling**: The `.env` file is created/updated with mode `0o600` (owner read/write only). Velka refuses to write if `.env` is not listed in `.gitignore` or if `.env` is tracked by Git.
+3. **Opt-in and confirmation**: Migration runs only when `--migrate-to-env` is passed. Use `--dry-run` to preview, or `--yes` to apply without confirmation. Without `--yes`, Velka prompts for confirmation before writing.
+4. **Value in memory**: Secret values are used only to write into `.env` and to replace the line in source files. They are not logged or concatenated into any output.
+
 ## Acknowledgments
 
 We appreciate security researchers who help keep Velka safe.

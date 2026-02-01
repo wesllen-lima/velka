@@ -63,6 +63,12 @@ Repo → **Settings → Branches → Add rule** for `master` (or `main`):
 - Integration tests: `cargo test --test '*'`
 - Run Velka on itself: `cargo run -- scan .`
 
+## Benchmarks
+- Run all: `cargo bench`
+- Run only cache benchmarks: `cargo bench scan_1000_files_cache`
+- Run a specific bench (e.g. 1000 files): `cargo bench scan_1000_files`
+- Benchmarks are in `benches/scan_bench.rs` (throughput with cache off; cache cold vs cache hit for 1000 files).
+
 ## Versioning
 
 - **Single source of truth**: `version` in `Cargo.toml`.

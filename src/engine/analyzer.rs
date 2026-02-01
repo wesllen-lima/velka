@@ -3,6 +3,7 @@ use std::sync::LazyLock;
 
 use crate::domain::Severity;
 use crate::domain::Sin;
+use crate::engine::known_examples::is_known_example;
 use crate::engine::rules::CompiledCustomRule;
 use crate::engine::RULES;
 use crate::utils::{calculate_entropy, extract_quoted_string_contents};
@@ -50,19 +51,117 @@ static EXAMPLE_VALUE_PATTERNS: LazyLock<Vec<Regex>> = LazyLock::new(|| {
     ]
 });
 
+static PLACEHOLDER_PATTERNS: LazyLock<Vec<Regex>> = LazyLock::new(|| {
+    vec![
+        Regex::new(r"(?i)^(xxx+|XXX+|\*{3,}|-{3,}|_{3,})$").expect("placeholder regex"),
+        Regex::new(r"(?i)(your[-_]?api[-_]?key|insert[-_]?token|replace[-_]?me|changeme|todo|placeholder)[-_]?(here)?$")
+            .expect("placeholder regex"),
+        Regex::new(r"^<[^>]+>$").expect("doc angle bracket"),
+        Regex::new(r"(?i)^.*(TODO|CHANGEME|REPLACE|FIXME|XXX)\s*$").expect("doc keyword"),
+    ]
+});
+
+fn looks_like_repetitive(matched: &str) -> bool {
+    if matched.len() < 8 {
+        return false;
+    }
+    let bytes = matched.as_bytes();
+    let first = bytes[0];
+    if bytes.iter().all(|&b| b == first) {
+        return true;
+    }
+    if matched.chars().all(|c| c.is_ascii_digit()) && matched.len() >= 12 {
+        let uniq: std::collections::HashSet<char> = matched.chars().collect();
+        if uniq.len() <= 3 {
+            return true;
+        }
+    }
+    false
+}
+
+fn looks_like_placeholder(matched: &str) -> bool {
+    let s = matched.trim();
+    if s.len() > 80 {
+        return false;
+    }
+    PLACEHOLDER_PATTERNS
+        .iter()
+        .any(|re| re.is_match(s))
+}
+
 pub struct AnalyzeLineConfig<'a> {
     pub entropy_threshold: f32,
     pub disabled_rules: &'a [String],
     pub whitelist: &'a [String],
     pub custom_rules: &'a [CompiledCustomRule],
     pub skip_entropy_in_regex_context: bool,
+    pub allowlist_regexes: Option<&'a [Regex]>,
 }
 
 fn is_whitelisted(matched: &str, whitelist: &[String]) -> bool {
     whitelist.iter().any(|w| matched.contains(w))
 }
 
-fn analyze_context(context: &[&str], line: &str, matched_value: Option<&str>) -> bool {
+fn is_allowlisted_regex(matched: &str, allowlist_regexes: Option<&[Regex]>) -> bool {
+    let Some(regexes) = allowlist_regexes else {
+        return false;
+    };
+    regexes.iter().any(|re| re.is_match(matched))
+}
+
+fn path_suggests_test(path_str: &str) -> bool {
+    let normalized = path_str.replace('\\', "/");
+    normalized.contains("/tests/")
+        || normalized.contains("/test/")
+        || normalized.contains("/__tests__/")
+        || normalized.contains("/spec/")
+        || normalized.contains(".spec.")
+        || normalized.contains("_test.")
+        || normalized.contains(".test.")
+}
+
+fn line_suggests_test_context(line: &str) -> bool {
+    let trimmed = line.trim();
+    trimmed.contains("#[cfg(test)]")
+        || trimmed.contains("#[test]")
+        || trimmed.contains("#[cfg(test)")
+        || trimmed.contains("fn test_")
+        || trimmed.contains("def test_")
+        || trimmed.contains("function test_")
+}
+
+static DOC_COMMENT_PATTERNS: LazyLock<Vec<Regex>> = LazyLock::new(|| {
+    vec![
+        Regex::new(r"(?i)^\s*///\s*(example|test|fake|sample|demo|placeholder)")
+            .expect("doc comment pattern"),
+        Regex::new(r"(?i)^\s*/\*\*?\s*(example|test|fake|sample|demo|placeholder)")
+            .expect("doc comment pattern"),
+        Regex::new(r"(?i)^\s*#\s*(example|test)\b").expect("doc comment pattern"),
+    ]
+});
+
+fn analyze_context(
+    context: &[&str],
+    line: &str,
+    matched_value: Option<&str>,
+    path_str: &str,
+) -> bool {
+    if path_suggests_test(path_str) {
+        return true;
+    }
+    if line_suggests_test_context(line) {
+        return true;
+    }
+    for ctx_line in context {
+        if line_suggests_test_context(ctx_line) {
+            return true;
+        }
+        for pattern in DOC_COMMENT_PATTERNS.iter() {
+            if pattern.is_match(ctx_line.trim()) {
+                return true;
+            }
+        }
+    }
     for var_pattern in EXAMPLE_VAR_REGEXES.iter() {
         if var_pattern.is_match(line) {
             return true;
@@ -70,11 +169,14 @@ fn analyze_context(context: &[&str], line: &str, matched_value: Option<&str>) ->
     }
 
     if let Some(value) = matched_value {
-        if value.len() < 30 {
+        if value.len() <= 80 {
             for pattern in EXAMPLE_VALUE_PATTERNS.iter() {
-                if pattern.is_match(value) {
+                if pattern.is_match(value.trim()) {
                     return true;
                 }
+            }
+            if looks_like_repetitive(value) || looks_like_placeholder(value) {
+                return true;
             }
         }
     }
@@ -137,7 +239,15 @@ pub fn analyze_line(
                 continue;
             }
 
-            if analyze_context(&context, line, Some(matched)) {
+            if analyze_context(&context, line, Some(matched), path_str) {
+                continue;
+            }
+
+            if is_known_example(rule.id, matched) {
+                continue;
+            }
+
+            if is_allowlisted_regex(matched, scan_cfg.allowlist_regexes) {
                 continue;
             }
 
@@ -155,6 +265,8 @@ pub fn analyze_line(
                 rule_id: rule.id.to_string(),
                 commit_hash,
                 verified: None,
+                confidence: None,
+                confidence_factors: None,
             });
         }
     }
@@ -171,7 +283,11 @@ pub fn analyze_line(
                 continue;
             }
 
-            if analyze_context(&context, line, Some(matched)) {
+            if analyze_context(&context, line, Some(matched), path_str) {
+                continue;
+            }
+
+            if is_allowlisted_regex(matched, scan_cfg.allowlist_regexes) {
                 continue;
             }
 
@@ -185,6 +301,8 @@ pub fn analyze_line(
                 rule_id: custom_rule.id.clone(),
                 commit_hash,
                 verified: None,
+                confidence: None,
+                confidence_factors: None,
             });
         }
     }
@@ -194,11 +312,15 @@ pub fn analyze_line(
             continue;
         }
 
-        if analyze_context(&context, line, Some(string)) {
+        if analyze_context(&context, line, Some(string), path_str) {
             continue;
         }
 
         if scan_cfg.skip_entropy_in_regex_context && is_regex_context(line) {
+            continue;
+        }
+
+        if is_allowlisted_regex(string, scan_cfg.allowlist_regexes) {
             continue;
         }
 
@@ -214,6 +336,8 @@ pub fn analyze_line(
                 rule_id: "HIGH_ENTROPY".to_string(),
                 commit_hash,
                 verified: None,
+                confidence: None,
+                confidence_factors: None,
             });
         }
     }
@@ -237,12 +361,13 @@ mod tests {
             whitelist,
             custom_rules,
             skip_entropy_in_regex_context: false,
+            allowlist_regexes: None,
         }
     }
 
     #[test]
     fn test_analyze_line_aws_key() {
-        let line = r#"let key = "AKIAIOSFODNN7EXAMPLE";"#;
+        let line = r#"let key = "AKIA0000000000000000";"#;
         let context = ["", line, ""];
         let scan_cfg = default_config(&[], &[], &[]);
         let result = analyze_line(line, "test.rs", 1, context, None, &scan_cfg);
@@ -288,26 +413,29 @@ mod tests {
         assert!(analyze_context(
             &[],
             r#"let test_key = "value";"#,
-            Some("value")
+            Some("value"),
+            "test.rs",
         ));
         assert!(analyze_context(
             &[],
             r#"const example_token = "abc";"#,
-            Some("abc")
+            Some("abc"),
+            "test.rs",
         ));
         assert!(analyze_context(
             &[],
             r#"var fake_secret = "123";"#,
-            Some("123")
+            Some("123"),
+            "test.rs",
         ));
     }
 
     #[test]
     fn test_analyze_context_example_value_pattern() {
-        assert!(analyze_context(&[], "let key = x;", Some("example123")));
-        assert!(analyze_context(&[], "let key = x;", Some("test-1")));
-        assert!(analyze_context(&[], "let key = x;", Some("placeholder")));
-        assert!(analyze_context(&[], "let key = x;", Some("demo_99")));
+        assert!(analyze_context(&[], "let key = x;", Some("example123"), "test.rs"));
+        assert!(analyze_context(&[], "let key = x;", Some("test-1"), "test.rs"));
+        assert!(analyze_context(&[], "let key = x;", Some("placeholder"), "test.rs"));
+        assert!(analyze_context(&[], "let key = x;", Some("demo_99"), "test.rs"));
     }
 
     #[test]
@@ -315,10 +443,11 @@ mod tests {
         assert!(analyze_context(
             &["// example config"],
             "let key = x;",
-            None
+            None,
+            "test.rs",
         ));
-        assert!(analyze_context(&["# test value"], "let key = x;", None));
-        assert!(analyze_context(&["example:"], "let key = x;", None));
+        assert!(analyze_context(&["# test value"], "let key = x;", None, "test.rs"));
+        assert!(analyze_context(&["example:"], "let key = x;", None, "test.rs"));
     }
 
     #[test]
@@ -326,18 +455,20 @@ mod tests {
         assert!(!analyze_context(
             &[],
             "let key = x;",
-            Some("real_secret_123")
+            Some("real_secret_123"),
+            "src/main.rs",
         ));
         assert!(!analyze_context(
             &["// production config"],
             "let key = x;",
-            None
+            None,
+            "src/main.rs",
         ));
     }
 
     #[test]
     fn test_analyze_line_disabled_rule() {
-        let line = r#"let key = "AKIAIOSFODNN7EXAMPLE";"#;
+        let line = r#"let key = "AKIA0000000000000000";"#;
         let context = ["", line, ""];
         let disabled = vec!["AWS_ACCESS_KEY".to_string()];
         let scan_cfg = default_config(&disabled, &[], &[]);
@@ -365,6 +496,7 @@ mod tests {
             whitelist: &[],
             custom_rules: &[],
             skip_entropy_in_regex_context: true,
+            allowlist_regexes: None,
         };
         let result = analyze_line(line, "test.rs", 1, context, None, &scan_cfg);
         assert!(result.is_none());
@@ -401,7 +533,7 @@ mod tests {
 
     #[test]
     fn test_analyze_line_commit_hash_preserved() {
-        let line = r#"let key = "AKIAIOSFODNN7EXAMPLE";"#;
+        let line = r#"let key = "AKIA0000000000000000";"#;
         let context = ["", line, ""];
         let scan_cfg = default_config(&[], &[], &[]);
         let commit = Some("abc123def".to_string());
