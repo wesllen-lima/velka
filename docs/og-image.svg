@@ -1,0 +1,20 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="630" viewBox="0 0 1200 630">
+  <defs>
+    <linearGradient id="g" x1="0" x2="1">
+      <stop offset="0" stop-color="#dc2626"/>
+      <stop offset="1" stop-color="#10b981"/>
+    </linearGradient>
+  </defs>
+  <rect width="100%" height="100%" fill="#0a0a0f" />
+  <g fill="url(#g)">
+    <text x="80" y="220" font-family="Space Grotesk, Arial, sans-serif" font-size="72" font-weight="700">velka</text>
+  </g>
+  <text x="80" y="320" fill="#9ca3af" font-family="Inter, Arial, sans-serif" font-size="36">The Code Sin Judge — Secret scanner &amp; security analyzer</text>
+  <rect x="80" y="360" width="420" height="6" rx="3" fill="url(#g)" />
+  <g transform="translate(820,120)">
+    <!-- simplified card to avoid stroke artifact on rasterization -->
+    <rect width="320" height="320" rx="28" fill="#0b0b0d" />
+    <rect x="8" y="8" width="304" height="304" rx="20" fill="#0e0e10" opacity="0.6" />
+    <text x="160" y="180" fill="#e6eef2" font-family="Fira Code, monospace" font-size="22" text-anchor="middle">velka v1.2.0</text>
+  </g>
+</svg>

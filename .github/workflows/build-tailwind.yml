@@ -1,0 +1,41 @@
+name: Build Tailwind CSS
+
+on:
+  push:
+    branches: [ main, master ]
+  workflow_dispatch:
+
+jobs:
+  build:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: docs
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          persist-credentials: true
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '18'
+
+      - name: Install dependencies
+        run: |
+          npm ci || npm install
+
+      - name: Build tailwind CSS
+        run: npm run build:css
+
+      - name: Commit generated CSS
+        uses: EndBug/add-and-commit@v9
+        with:
+          author_name: github-actions[bot]
+          author_email: github-actions[bot]@users.noreply.github.com
+          message: "ci: build tailwind CSS"
+          add: "docs/tailwind.css"
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
