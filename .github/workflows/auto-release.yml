@@ -18,18 +18,32 @@ jobs:
           fetch-depth: 0
           persist-credentials: true
 
-      - name: Create tag (semver patch bump)
+      - name: Determine package version and tag
         id: tag
-        uses: anothrNick/github-tag-action@v1.38.0
-        with:
-          github_token: ${{ secrets.GITHUB_TOKEN }}
-          tag_prefix: "v"
-          release_branches: "main,master"
+        run: |
+          set -euo pipefail
+          VER=$(grep -E '^version\s*=\s*"' Cargo.toml | head -1 | sed 's/.*"\(.*\)".*/\1/')
+          TAG="v${VER}"
+          echo "version=${VER}" >> $GITHUB_OUTPUT
+          echo "tag=${TAG}" >> $GITHUB_OUTPUT
+
+      - name: Create tag if missing and push
+        run: |
+          set -euo pipefail
+          TAG=${{ steps.tag.outputs.tag }}
+          if git rev-parse "$TAG" >/dev/null 2>&1; then
+            echo "Tag $TAG already exists, skipping tag creation"
+          else
+            git config user.name "github-actions[bot]"
+            git config user.email "github-actions[bot]@users.noreply.github.com"
+            git tag -a "$TAG" -m "Release $TAG"
+            git push origin "$TAG"
+          fi
 
       - name: Create GitHub Release
         uses: ncipollo/release-action@v1
         with:
-          tag: ${{ steps.tag.outputs.new_tag }}
-          name: ${{ steps.tag.outputs.new_tag }}
+          tag: ${{ steps.tag.outputs.tag }}
+          name: ${{ steps.tag.outputs.tag }}
           draft: false
           prerelease: false
