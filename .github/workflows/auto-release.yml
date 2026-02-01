@@ -40,7 +40,22 @@ jobs:
             git push origin "$TAG"
           fi
 
+      - name: Check release exists
+        id: release_check
+        run: |
+          set -euo pipefail
+          TAG=${{ steps.tag.outputs.tag }}
+          STATUS=$(curl -s -o /dev/null -w "%{http_code}" -H "Authorization: token $GITHUB_TOKEN" "https://api.github.com/repos/${GITHUB_REPOSITORY}/releases/tags/$TAG" || true)
+          if [ "$STATUS" = "200" ]; then
+            echo "exists=true" >> $GITHUB_OUTPUT
+          else
+            echo "exists=false" >> $GITHUB_OUTPUT
+          fi
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
       - name: Create GitHub Release
+        if: steps.release_check.outputs.exists != 'true'
         uses: ncipollo/release-action@v1
         with:
           tag: ${{ steps.tag.outputs.tag }}
