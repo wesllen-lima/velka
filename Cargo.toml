@@ -10,7 +10,7 @@ categories = ["command-line-utilities", "development-tools"]
 repository = "https://github.com/wesllen-lima/velka"
 homepage = "https://github.com/wesllen-lima/velka"
 documentation = "https://docs.rs/velka"
-exclude = ["benches/*", ".github/**", "tests/**"]
+exclude = ["benches/*", ".github/**", "tests/**", "docs/**", "package.json", "tailwind.config.cjs", "docs/input.css", "docs/tailwind.css", "docs/og-image.svg", "docs/og-image.png"]
 
 [lib]
 name = "velka"
