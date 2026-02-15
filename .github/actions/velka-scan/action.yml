@@ -1,0 +1,125 @@
+name: 'Velka Secret Scan'
+description: 'High-performance secret scanner powered by Rust. Detects leaked credentials in your codebase.'
+author: 'wesllen-lima'
+
+branding:
+  icon: 'shield'
+  color: 'red'
+
+inputs:
+  path:
+    description: 'Path to scan (default: repository root)'
+    required: false
+    default: '.'
+  format:
+    description: 'Output format: terminal, json, sarif, junit, markdown'
+    required: false
+    default: 'terminal'
+  mortal-only:
+    description: 'Only report mortal (critical) secrets'
+    required: false
+    default: 'true'
+  deep-scan:
+    description: 'Scan git history for buried secrets'
+    required: false
+    default: 'false'
+  diff-only:
+    description: 'Only scan changed files (PR mode)'
+    required: false
+    default: 'false'
+  since:
+    description: 'Incremental scan: only files changed since commit/tag/branch'
+    required: false
+    default: ''
+  version:
+    description: 'Velka version to install (default: latest)'
+    required: false
+    default: 'latest'
+  fail-on-secrets:
+    description: 'Fail the workflow if mortal secrets are found'
+    required: false
+    default: 'true'
+
+outputs:
+  secrets-found:
+    description: 'Number of secrets detected'
+  sarif-file:
+    description: 'Path to SARIF output file (if format=sarif)'
+
+runs:
+  using: 'composite'
+  steps:
+    - name: Install Velka
+      shell: bash
+      run: |
+        set -euo pipefail
+        VERSION="${{ inputs.version }}"
+
+        if [ "$VERSION" = "latest" ]; then
+          DOWNLOAD_URL=$(curl -sL https://api.github.com/repos/wesllen-lima/velka/releases/latest \
+            | grep "browser_download_url.*velka.*linux.*x86_64" \
+            | head -1 \
+            | cut -d '"' -f 4)
+        else
+          DOWNLOAD_URL="https://github.com/wesllen-lima/velka/releases/download/v${VERSION}/velka-linux-x86_64"
+        fi
+
+        if [ -z "$DOWNLOAD_URL" ]; then
+          echo "::warning::Could not find pre-built binary, building from source..."
+          cargo install velka --version "${VERSION}" 2>/dev/null || cargo install velka
+        else
+          curl -sL "$DOWNLOAD_URL" -o /usr/local/bin/velka
+          chmod +x /usr/local/bin/velka
+        fi
+
+        velka --version
+
+    - name: Run Velka Scan
+      shell: bash
+      run: |
+        set -euo pipefail
+
+        SCAN_ARGS="${{ inputs.path }}"
+        SCAN_ARGS="$SCAN_ARGS --format ${{ inputs.format }}"
+        SCAN_ARGS="$SCAN_ARGS --ci"
+
+        if [ "${{ inputs.mortal-only }}" = "true" ]; then
+          SCAN_ARGS="$SCAN_ARGS --mortal-only"
+        fi
+
+        if [ "${{ inputs.deep-scan }}" = "true" ]; then
+          SCAN_ARGS="$SCAN_ARGS --deep-scan"
+        fi
+
+        if [ "${{ inputs.diff-only }}" = "true" ]; then
+          SCAN_ARGS="$SCAN_ARGS --diff"
+        fi
+
+        if [ -n "${{ inputs.since }}" ]; then
+          SCAN_ARGS="$SCAN_ARGS --since ${{ inputs.since }}"
+        fi
+
+        # Generate SARIF if requested
+        if [ "${{ inputs.format }}" = "sarif" ]; then
+          SARIF_PATH="${{ runner.temp }}/velka-results.sarif"
+          velka scan $SCAN_ARGS > "$SARIF_PATH" 2>&1 || EXIT_CODE=$?
+          echo "sarif-file=$SARIF_PATH" >> "$GITHUB_OUTPUT"
+        else
+          velka scan $SCAN_ARGS 2>&1 || EXIT_CODE=$?
+        fi
+
+        EXIT_CODE=${EXIT_CODE:-0}
+
+        # Count secrets from JSON output
+        SECRETS_COUNT=0
+        if [ "$EXIT_CODE" -ne 0 ]; then
+          SECRETS_COUNT=$(velka scan ${{ inputs.path }} --format json --ci 2>/dev/null | python3 -c "import sys,json; print(len(json.load(sys.stdin)))" 2>/dev/null || echo "1")
+        fi
+        echo "secrets-found=$SECRETS_COUNT" >> "$GITHUB_OUTPUT"
+
+        if [ "${{ inputs.fail-on-secrets }}" = "true" ] && [ "$EXIT_CODE" -ne 0 ]; then
+          echo "::error::Velka detected $SECRETS_COUNT secret(s) in the codebase."
+          exit 1
+        fi
+
+        exit 0

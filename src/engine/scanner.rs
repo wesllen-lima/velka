@@ -13,8 +13,9 @@ use crate::domain::Sin;
 use crate::engine::analyzer::{analyze_line, AnalyzeLineConfig};
 use crate::engine::cache::{CacheEntry, CachedMatch, ScanCache};
 use crate::engine::file_reader::{is_binary, read_file_content};
+use crate::engine::honeytoken;
 use crate::engine::rules::CompiledCustomRule;
-use crate::engine::verifier::{self, compute_confidence};
+use crate::engine::verifier::{self, compute_confidence, enhance_confidence_with_context};
 use crate::utils::build_context;
 use chrono::Utc;
 use regex::Regex;
@@ -86,6 +87,9 @@ fn scan_file_text(
         if line.contains("velka:ignore") {
             continue;
         }
+        if honeytoken::is_honeytoken(line) {
+            continue;
+        }
         if line.len() > params.skip_minified {
             continue;
         }
@@ -102,7 +106,7 @@ fn scan_file_text(
             allowlist_regexes: params.allowlist_regexes.as_ref().map(|v| v.as_slice()),
         };
 
-        if let Some(sin) = analyze_line(
+        if let Some(mut sin) = analyze_line(
             line,
             path_str,
             line_num,
@@ -110,6 +114,7 @@ fn scan_file_text(
             commit_hash.cloned(),
             &scan_cfg,
         ) {
+            enhance_confidence_with_context(&mut sin, &lines, line_idx);
             file_sins.push(sin);
         }
     }
@@ -180,9 +185,11 @@ pub fn scan_single_file(
     let whitelist: Vec<String> = config.scan.whitelist.clone();
     let entropy_threshold = config.scan.entropy_threshold;
     let max_file_size = config.scan.max_file_size_mb * 1_048_576;
+    let streaming_threshold = config.scan.streaming_threshold_mb * 1_048_576;
     let skip_minified = config.scan.skip_minified_threshold;
 
-    let Some(file_content) = read_file_content(file_path, max_file_size) else {
+    let Some(file_content) = read_file_content(file_path, max_file_size, streaming_threshold)
+    else {
         return Ok(());
     };
 
@@ -333,6 +340,7 @@ pub fn investigate_with_progress(
     let whitelist: Arc<Vec<String>> = Arc::new(config.scan.whitelist.clone());
     let entropy_threshold = config.scan.entropy_threshold;
     let max_file_size = config.scan.max_file_size_mb * 1_048_576;
+    let streaming_threshold = config.scan.streaming_threshold_mb * 1_048_576;
     let skip_minified = config.scan.skip_minified_threshold;
     let verify_secrets = config.scan.verify;
 
@@ -379,6 +387,7 @@ pub fn investigate_with_progress(
         let cache_pending_clone = Arc::clone(&cache_pending);
         let threshold = entropy_threshold;
         let max_size = max_file_size;
+        let stream_threshold = streaming_threshold;
         let minified_limit = skip_minified;
         let pb_clone = pb.clone();
         let counter = Arc::clone(&progress_counter);
@@ -415,7 +424,8 @@ pub fn investigate_with_progress(
                 }
             }
 
-            let Some(file_content) = read_file_content(file_path, max_size) else {
+            let Some(file_content) = read_file_content(file_path, max_size, stream_threshold)
+            else {
                 return ignore::WalkState::Continue;
             };
 

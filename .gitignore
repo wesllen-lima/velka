@@ -15,6 +15,8 @@ Thumbs.db
 
 # Secrets & Local Configs
 .env
+.env.*
+!.env.example
 velka.toml
 !velka.example.toml
 
@@ -23,10 +25,45 @@ velka.toml
 /secrets
 *.log
 
-# Velka Cache
+# Velka Cache (binary + project caches)
 .velka-cache/
+*.velka-cache
+~/.velka/cache/
+
+# Scan Output Files
 *.sarif
 velka-report.xml
 report.html
 results.csv
 results.json
+
+# K8s TLS Certificates (admission webhook)
+*.pem
+*.crt
+*.key
+!src/**/*.pem
+!src/**/*.crt
+!src/**/*.key
+
+# LSP Debug Logs
+velka-lsp.log
+velka-lsp-*.log
+
+# Bincode serialized caches
+*.bincode
+
+# Temporary / runtime
+*.tmp
+*.bak
+.velka-quarantine/
+
+# Claude Code & AI session data
+.claude/
+claude_*.md
+*.jsonl
+
+# Project Management
+PLAN.md
+
+# cargo-release
+release.toml
