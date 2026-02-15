@@ -304,7 +304,7 @@ fn render_entropy_panel(f: &mut Frame, area: Rect, app: &App) {
                 Color::Green
             };
             Bar::default()
-                .label(label.into())
+                .label(label)
                 .value(value)
                 .style(Style::default().fg(color))
         })
