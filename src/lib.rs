@@ -3,6 +3,7 @@ pub mod domain;
 pub mod engine;
 pub mod error;
 pub mod output;
+pub mod ui;
 pub mod utils;
 
 use std::path::Path;

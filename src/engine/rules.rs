@@ -1,8 +1,13 @@
+use notify::{Event, EventKind, RecommendedWatcher, RecursiveMode, Watcher};
 use regex::Regex;
-use std::sync::LazyLock;
+use serde::Deserialize;
+use std::fs;
+use std::path::{Path, PathBuf};
+use std::sync::{Arc, LazyLock, RwLock};
 
 use crate::domain::Rule;
 use crate::domain::Severity;
+use crate::error::{Result, VelkaError};
 
 #[derive(Debug, Clone)]
 pub struct CompiledCustomRule {
@@ -334,3 +339,393 @@ pub static RULES: &[Rule] = &[
         severity: Severity::Venial,
     },
 ];
+
+#[derive(Debug, Clone, Deserialize)]
+struct DynamicRule {
+    id: String,
+    pattern: String,
+    severity: String,
+    description: Option<String>,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+struct RulesFile {
+    #[serde(default)]
+    rules: Vec<DynamicRule>,
+}
+
+pub struct DynamicRulesManager {
+    rules_dir: PathBuf,
+    compiled_rules: Arc<RwLock<Vec<CompiledCustomRule>>>,
+    watcher_handle: Option<RecommendedWatcher>,
+}
+
+impl DynamicRulesManager {
+    pub fn new(rules_dir: Option<PathBuf>) -> Result<Self> {
+        let dir = rules_dir.unwrap_or_else(|| {
+            let home = dirs::home_dir().unwrap_or_else(|| PathBuf::from("."));
+            home.join(".velka").join("rules.d")
+        });
+
+        if !dir.exists() {
+            fs::create_dir_all(&dir)?;
+        }
+
+        let compiled_rules = Arc::new(RwLock::new(Vec::new()));
+
+        let mut manager = Self {
+            rules_dir: dir,
+            compiled_rules,
+            watcher_handle: None,
+        };
+
+        manager.reload_rules()?;
+        manager.setupwatcher_handle()?;
+
+        Ok(manager)
+    }
+
+    pub fn reload_rules(&mut self) -> Result<()> {
+        let mut all_rules = Vec::new();
+
+        if !self.rules_dir.exists() {
+            return Ok(());
+        }
+
+        for entry in fs::read_dir(&self.rules_dir)? {
+            let entry = entry?;
+            let path = entry.path();
+
+            if !path.is_file() {
+                continue;
+            }
+
+            let ext = path.extension().and_then(|e| e.to_str());
+            match ext {
+                Some("toml") => {
+                    if let Ok(rules) = Self::load_toml_rules(&path) {
+                        all_rules.extend(rules);
+                    }
+                }
+                Some("yaml" | "yml") => {
+                    if let Ok(rules) = Self::load_yaml_rules(&path) {
+                        all_rules.extend(rules);
+                    }
+                }
+                _ => {}
+            }
+        }
+
+        let compiled = Self::compile_rules(all_rules)?;
+
+        if let Ok(mut guard) = self.compiled_rules.write() {
+            *guard = compiled;
+        }
+
+        Ok(())
+    }
+
+    fn load_toml_rules(path: &Path) -> Result<Vec<DynamicRule>> {
+        let content = fs::read_to_string(path)?;
+        let rules_file: RulesFile = toml::from_str(&content)
+            .map_err(|e| VelkaError::Config(format!("Invalid TOML in {}: {e}", path.display())))?;
+        Ok(rules_file.rules)
+    }
+
+    fn load_yaml_rules(path: &Path) -> Result<Vec<DynamicRule>> {
+        let content = fs::read_to_string(path)?;
+        let rules_file: RulesFile = serde_yaml::from_str(&content)
+            .map_err(|e| VelkaError::Config(format!("Invalid YAML in {}: {e}", path.display())))?;
+        Ok(rules_file.rules)
+    }
+
+    fn compile_rules(rules: Vec<DynamicRule>) -> Result<Vec<CompiledCustomRule>> {
+        rules
+            .into_iter()
+            .map(|rule| {
+                let pattern =
+                    Regex::new(&rule.pattern).map_err(|e| VelkaError::InvalidPattern {
+                        rule_id: rule.id.clone(),
+                        message: e.to_string(),
+                    })?;
+
+                let severity = match rule.severity.to_lowercase().as_str() {
+                    "mortal" => Severity::Mortal,
+                    "venial" => Severity::Venial,
+                    _ => {
+                        return Err(VelkaError::InvalidPattern {
+                            rule_id: rule.id.clone(),
+                            message: format!(
+                                "Invalid severity '{}'. Must be 'Mortal' or 'Venial'",
+                                rule.severity
+                            ),
+                        });
+                    }
+                };
+
+                Ok(CompiledCustomRule {
+                    id: rule.id.clone(),
+                    pattern,
+                    severity,
+                    description: rule
+                        .description
+                        .unwrap_or_else(|| format!("Dynamic rule: {}", rule.id)),
+                })
+            })
+            .collect()
+    }
+
+    fn setupwatcher_handle(&mut self) -> Result<()> {
+        let rules_dir = self.rules_dir.clone();
+        let compiled_rules = Arc::clone(&self.compiled_rules);
+
+        let mut watcher = notify::recommended_watcher(move |res: notify::Result<Event>| {
+            if let Ok(event) = res {
+                if matches!(
+                    event.kind,
+                    EventKind::Create(_) | EventKind::Modify(_) | EventKind::Remove(_)
+                ) {
+                    let _ = reload_rules_internal(&rules_dir, &compiled_rules);
+                }
+            }
+        })
+        .map_err(|e| VelkaError::Config(format!("Failed to create watcher: {e}")))?;
+
+        watcher
+            .watch(&self.rules_dir, RecursiveMode::NonRecursive)
+            .map_err(|e| VelkaError::Config(format!("Failed to watch directory: {e}")))?;
+
+        self.watcher_handle = Some(watcher);
+        Ok(())
+    }
+
+    #[must_use]
+    pub fn get_rules(&self) -> Vec<CompiledCustomRule> {
+        self.compiled_rules
+            .read()
+            .map(|guard| guard.clone())
+            .unwrap_or_default()
+    }
+
+    #[must_use]
+    pub fn list_rules(&self) -> Vec<(String, String, String)> {
+        self.compiled_rules
+            .read()
+            .map(|guard| {
+                guard
+                    .iter()
+                    .map(|r| {
+                        (
+                            r.id.clone(),
+                            r.description.clone(),
+                            format!("{:?}", r.severity),
+                        )
+                    })
+                    .collect()
+            })
+            .unwrap_or_default()
+    }
+}
+
+fn reload_rules_internal(
+    rules_dir: &Path,
+    compiled_rules: &Arc<RwLock<Vec<CompiledCustomRule>>>,
+) -> Result<()> {
+    let mut all_rules = Vec::new();
+
+    for entry in fs::read_dir(rules_dir)? {
+        let entry = entry?;
+        let path = entry.path();
+
+        if !path.is_file() {
+            continue;
+        }
+
+        let ext = path.extension().and_then(|e| e.to_str());
+        match ext {
+            Some("toml") => {
+                if let Ok(content) = fs::read_to_string(&path) {
+                    if let Ok(rules_file) = toml::from_str::<RulesFile>(&content) {
+                        all_rules.extend(rules_file.rules);
+                    }
+                }
+            }
+            Some("yaml" | "yml") => {
+                if let Ok(content) = fs::read_to_string(&path) {
+                    if let Ok(rules_file) = serde_yaml::from_str::<RulesFile>(&content) {
+                        all_rules.extend(rules_file.rules);
+                    }
+                }
+            }
+            _ => {}
+        }
+    }
+
+    let compiled: Vec<CompiledCustomRule> = all_rules
+        .into_iter()
+        .filter_map(|rule| {
+            let pattern = Regex::new(&rule.pattern).ok()?;
+            let severity = match rule.severity.to_lowercase().as_str() {
+                "mortal" => Severity::Mortal,
+                "venial" => Severity::Venial,
+                _ => return None,
+            };
+
+            Some(CompiledCustomRule {
+                id: rule.id.clone(),
+                pattern,
+                severity,
+                description: rule
+                    .description
+                    .unwrap_or_else(|| format!("Dynamic rule: {}", rule.id)),
+            })
+        })
+        .collect();
+
+    if let Ok(mut guard) = compiled_rules.write() {
+        *guard = compiled;
+    }
+
+    Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_all_builtin_rules_compile() {
+        // Force lazy initialization of all rule regexes
+        for rule in RULES {
+            assert!(
+                rule.pattern.is_match("") || !rule.pattern.is_match(""),
+                "Rule {} regex failed to compile",
+                rule.id
+            );
+        }
+    }
+
+    #[test]
+    fn test_rule_ids_unique() {
+        let mut seen = std::collections::HashSet::new();
+        for rule in RULES {
+            assert!(seen.insert(rule.id), "Duplicate rule ID: {}", rule.id);
+        }
+    }
+
+    #[test]
+    fn test_aws_access_key_pattern() {
+        let rule = RULES.iter().find(|r| r.id == "AWS_ACCESS_KEY").unwrap();
+        assert!(rule.pattern.is_match("AKIA1234567890ABCDEF"));
+        assert!(!rule.pattern.is_match("AKID1234567890ABCDEF")); // Wrong prefix
+        assert!(!rule.pattern.is_match("AKIA123")); // Too short
+    }
+
+    #[test]
+    fn test_github_token_pattern() {
+        let rule = RULES.iter().find(|r| r.id == "GITHUB_TOKEN").unwrap();
+        assert!(rule
+            .pattern
+            .is_match("ghp_aBcDeFgHiJkLmNoPqRsTuVwXyZ1234567890"));
+        assert!(rule
+            .pattern
+            .is_match("gho_aBcDeFgHiJkLmNoPqRsTuVwXyZ1234567890"));
+        assert!(!rule.pattern.is_match("ghx_short")); // Invalid prefix
+    }
+
+    #[test]
+    fn test_stripe_pattern() {
+        let rule = RULES.iter().find(|r| r.id == "STRIPE_SECRET").unwrap();
+        let fake_key = format!("sk_live_{}", "a".repeat(24));
+        assert!(rule.pattern.is_match(&fake_key));
+        assert!(!rule.pattern.is_match("sk_test_abc")); // sk_test not matched by this rule
+    }
+
+    #[test]
+    fn test_private_key_pattern() {
+        let rule = RULES.iter().find(|r| r.id == "PRIVATE_KEY").unwrap();
+        assert!(rule.pattern.is_match("-----BEGIN RSA PRIVATE KEY-----"));
+        assert!(rule.pattern.is_match("-----BEGIN EC PRIVATE KEY-----"));
+        assert!(!rule.pattern.is_match("-----BEGIN PUBLIC KEY-----"));
+    }
+
+    #[test]
+    fn test_dynamic_rules_manager_empty_dir() {
+        let tmp = tempfile::TempDir::new().unwrap();
+        let manager = DynamicRulesManager::new(Some(tmp.path().to_path_buf())).unwrap();
+        assert!(manager.get_rules().is_empty());
+    }
+
+    #[test]
+    fn test_dynamic_rules_manager_toml() {
+        let tmp = tempfile::TempDir::new().unwrap();
+        let rules_content = r#"
+[[rules]]
+id = "CUSTOM_TEST"
+pattern = "CUSTOM_[A-Z]{4}"
+severity = "mortal"
+description = "Custom test rule"
+"#;
+        fs::write(tmp.path().join("custom.toml"), rules_content).unwrap();
+        let manager = DynamicRulesManager::new(Some(tmp.path().to_path_buf())).unwrap();
+        let rules = manager.get_rules();
+        assert_eq!(rules.len(), 1);
+        assert_eq!(rules[0].id, "CUSTOM_TEST");
+        assert_eq!(rules[0].severity, Severity::Mortal);
+    }
+
+    #[test]
+    fn test_dynamic_rules_manager_yaml() {
+        let tmp = tempfile::TempDir::new().unwrap();
+        let rules_content =
+            "rules:\n  - id: YAML_RULE\n    pattern: 'YAML_[0-9]+'\n    severity: venial\n";
+        fs::write(tmp.path().join("custom.yml"), rules_content).unwrap();
+        let manager = DynamicRulesManager::new(Some(tmp.path().to_path_buf())).unwrap();
+        let rules = manager.get_rules();
+        assert_eq!(rules.len(), 1);
+        assert_eq!(rules[0].id, "YAML_RULE");
+        assert_eq!(rules[0].severity, Severity::Venial);
+    }
+
+    #[test]
+    fn test_dynamic_rules_manager_invalid_regex() {
+        let tmp = tempfile::TempDir::new().unwrap();
+        let rules_content = r#"
+[[rules]]
+id = "BAD_RULE"
+pattern = "[invalid("
+severity = "mortal"
+"#;
+        fs::write(tmp.path().join("bad.toml"), rules_content).unwrap();
+        let manager = DynamicRulesManager::new(Some(tmp.path().to_path_buf()));
+        assert!(manager.is_err());
+    }
+
+    #[test]
+    fn test_dynamic_rules_list() {
+        let tmp = tempfile::TempDir::new().unwrap();
+        let rules_content = r#"
+[[rules]]
+id = "LIST_TEST"
+pattern = "TEST"
+severity = "venial"
+description = "List test rule"
+"#;
+        fs::write(tmp.path().join("list.toml"), rules_content).unwrap();
+        let manager = DynamicRulesManager::new(Some(tmp.path().to_path_buf())).unwrap();
+        let list = manager.list_rules();
+        assert_eq!(list.len(), 1);
+        assert_eq!(list[0].0, "LIST_TEST");
+    }
+
+    #[test]
+    fn test_all_mortal_rules_have_descriptions() {
+        for rule in RULES {
+            assert!(
+                !rule.description.is_empty(),
+                "Rule {} has no description",
+                rule.id
+            );
+        }
+    }
+}

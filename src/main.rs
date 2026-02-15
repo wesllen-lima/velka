@@ -1,109 +1,13 @@
-use std::fs;
-use std::io::Read;
-use std::path::{Path, PathBuf};
-use std::sync::Arc;
+mod cli;
+mod presets;
 
-use anyhow::{Context, Result};
-use clap::Parser;
-use crossbeam_channel::unbounded;
+use std::path::PathBuf;
 
-use velka::config::VelkaConfig;
-use velka::domain::Severity;
-use velka::domain::Sin;
-use velka::engine::{
-    analyze_complexity, format_migrate_report, get_changed_files, get_staged_files,
-    investigate_with_progress, run_migrate, scan_content, scan_history, scan_single_file,
-    ScanCache,
-};
-use velka::output::{format_output, OutputFormat, RedactionConfig};
+use anyhow::Result;
+use clap::{CommandFactory, Parser};
+use clap_complete::{generate, Shell};
 
-const PRESET_STRICT: &str = r#"[scan]
-ignore_paths = []
-entropy_threshold = 4.0
-max_file_size_mb = 100
-skip_minified_threshold = 10000
-
-[output]
-redact_secrets = true
-redact_visible_chars = 4
-
-[cache]
-enabled = true
-location = "both"
-
-[rules]
-disable = []
-"#;
-
-const PRESET_BALANCED: &str = r#"[scan]
-ignore_paths = [
-  "tests/**",
-  "docs/**",
-  "examples/**",
-  "vendor/**",
-]
-entropy_threshold = 4.6
-max_file_size_mb = 50
-skip_minified_threshold = 10000
-
-[output]
-redact_secrets = true
-redact_visible_chars = 4
-
-[cache]
-enabled = true
-location = "both"
-
-[rules]
-disable = []
-"#;
-
-const PRESET_CI: &str = r#"[scan]
-ignore_paths = [
-  "tests/**",
-  "examples/**",
-  "vendor/**",
-]
-entropy_threshold = 4.6
-max_file_size_mb = 50
-skip_minified_threshold = 10000
-
-[output]
-redact_secrets = true
-redact_visible_chars = 4
-
-[cache]
-enabled = false
-location = "both"
-
-[rules]
-disable = []
-"#;
-
-const PRESET_MONOREPO: &str = r#"[scan]
-ignore_paths = [
-  "dist/**",
-  "build/**",
-  ".next/**",
-  "coverage/**",
-  "node_modules/**",
-  "vendor/**",
-]
-entropy_threshold = 4.6
-max_file_size_mb = 80
-skip_minified_threshold = 12000
-
-[output]
-redact_secrets = true
-redact_visible_chars = 4
-
-[cache]
-enabled = true
-location = "both"
-
-[rules]
-disable = []
-"#;
+use velka::output::OutputFormat;
 
 #[derive(Parser)]
 #[command(
@@ -116,6 +20,76 @@ enum Cli {
     Stdin(StdinArgs),
     InstallHook,
     Init(InitArgs),
+    Honeytoken(HoneytokenArgs),
+    Rules(RulesArgs),
+    Rotate(RotateArgs),
+    Hook(HookArgs),
+    Quarantine(QuarantineArgs),
+    Lsp,
+    Tui(TuiArgs),
+    K8s(K8sArgs),
+    Runtime(RuntimeArgs),
+    /// Generate shell completion scripts
+    Completions(CompletionsArgs),
+}
+
+#[derive(Parser)]
+struct HoneytokenArgs {
+    #[command(subcommand)]
+    command: HoneytokenCommand,
+}
+
+#[derive(Parser)]
+enum HoneytokenCommand {
+    Generate(HoneytokenGenerateArgs),
+}
+
+#[derive(Parser)]
+struct HoneytokenGenerateArgs {
+    #[arg(long, help = "Target file to inject tokens (.env.example)")]
+    target: Option<PathBuf>,
+
+    #[arg(long, help = "Also inject to README.md")]
+    readme: bool,
+}
+
+#[derive(Parser)]
+struct RulesArgs {
+    #[command(subcommand)]
+    command: RulesCommand,
+}
+
+#[derive(Parser)]
+enum RulesCommand {
+    List,
+    Install(RulesInstallArgs),
+}
+
+#[derive(Parser)]
+struct RulesInstallArgs {
+    #[arg(help = "URL or local path to a rules file (.toml or .yaml)")]
+    source: String,
+
+    #[arg(long, help = "Custom name for the installed rules file")]
+    name: Option<String>,
+}
+
+#[derive(Parser)]
+struct RotateArgs {
+    #[arg(default_value = ".")]
+    path: PathBuf,
+
+    #[arg(long, help = "Only show rotation guidance for a specific rule ID")]
+    rule: Option<String>,
+
+    #[arg(long, help = "Mark detected secrets as remediated in history file")]
+    mark_remediated: bool,
+
+    #[arg(
+        long,
+        help = "Print executable CLI commands for rotation (dry-run safe)"
+    )]
+    commands: bool,
 }
 
 #[derive(Parser)]
@@ -183,6 +157,12 @@ struct ScanArgs {
 
     #[arg(long, help = "Apply migration without confirmation")]
     yes: bool,
+
+    #[arg(
+        long,
+        help = "Incremental scan: only files changed since <commit/tag/branch>"
+    )]
+    since: Option<String>,
 }
 
 #[derive(Parser)]
@@ -206,6 +186,15 @@ struct StdinArgs {
 }
 
 #[derive(Parser)]
+struct TuiArgs {
+    #[arg(default_value = ".")]
+    path: PathBuf,
+
+    #[arg(long, help = "Also scan git history")]
+    deep_scan: bool,
+}
+
+#[derive(Parser)]
 struct InitArgs {
     #[arg(
         long,
@@ -219,324 +208,178 @@ struct InitArgs {
     force: bool,
 }
 
+#[derive(Parser)]
+struct HookArgs {
+    #[command(subcommand)]
+    command: HookCommand,
+}
+
+#[derive(Parser)]
+enum HookCommand {
+    /// Install a high-performance pre-commit hook that blocks secrets
+    Install(HookInstallArgs),
+}
+
+#[derive(Parser)]
+struct HookInstallArgs {
+    #[arg(long, help = "Overwrite existing non-Velka hook")]
+    force: bool,
+
+    #[arg(long, help = "Also block venial sins (stricter mode)")]
+    strict: bool,
+}
+
+#[derive(Parser)]
+struct CompletionsArgs {
+    #[arg(help = "Target shell: bash, zsh, fish, elvish, powershell")]
+    shell: Shell,
+}
+
+#[derive(Parser)]
+struct K8sArgs {
+    #[command(subcommand)]
+    command: K8sCommand,
+}
+
+#[derive(Parser)]
+enum K8sCommand {
+    /// Start the Kubernetes admission webhook server
+    Webhook(K8sWebhookArgs),
+    /// Scan a local YAML manifest for secrets
+    Scan(K8sScanArgs),
+}
+
+#[derive(Parser)]
+struct K8sWebhookArgs {
+    #[arg(
+        long,
+        default_value = "0.0.0.0:8443",
+        help = "Address to bind the webhook server"
+    )]
+    addr: String,
+
+    #[arg(long, help = "Path to TLS certificate file")]
+    tls_cert: Option<String>,
+
+    #[arg(long, help = "Path to TLS private key file")]
+    tls_key: Option<String>,
+}
+
+#[derive(Parser)]
+struct K8sScanArgs {
+    #[arg(help = "Path to YAML manifest file")]
+    file: PathBuf,
+}
+
+#[derive(Parser)]
+struct RuntimeArgs {
+    #[arg(help = "Log source paths to monitor (reads stdin if empty)")]
+    sources: Vec<String>,
+
+    #[arg(long, short, help = "Follow (tail) log files for new content")]
+    follow: bool,
+}
+
+#[derive(Parser)]
+struct QuarantineArgs {
+    #[command(subcommand)]
+    command: QuarantineCommand,
+}
+
+#[derive(Parser)]
+enum QuarantineCommand {
+    /// List quarantined files
+    List,
+    /// Restore a quarantined file to its original location
+    Restore(QuarantineRestoreArgs),
+}
+
+#[derive(Parser)]
+struct QuarantineRestoreArgs {
+    #[arg(help = "Name of the quarantined file")]
+    name: String,
+}
+
 fn main() -> Result<()> {
     match Cli::parse() {
-        Cli::Scan(args) => run_scan(&args),
-        Cli::Stdin(args) => run_stdin(&args),
-        Cli::InstallHook => install_pre_commit_hook(),
-        Cli::Init(args) => run_init(&args),
-    }
-}
-
-fn run_stdin(args: &StdinArgs) -> Result<()> {
-    let mut content = String::new();
-    std::io::stdin()
-        .read_to_string(&mut content)
-        .context("Read stdin")?;
-
-    let config = VelkaConfig::load()?;
-    let mut sins = scan_content(&content, &config)?;
-
-    if args.mortal_only {
-        sins.retain(|sin| sin.severity == Severity::Mortal);
-    }
-
-    sins.sort_by(|a, b| {
-        a.path
-            .cmp(&b.path)
-            .then_with(|| a.line_number.cmp(&b.line_number))
-    });
-
-    let redaction = RedactionConfig {
-        enabled: !args.no_redact && config.output.redact_secrets,
-        visible_chars: config.output.redact_visible_chars,
-    };
-
-    let has_mortal = sins.iter().any(|s| s.severity == Severity::Mortal);
-    let output = format_output(sins, args.format, &redaction, args.ci);
-    print!("{output}");
-
-    if has_mortal {
-        std::process::exit(1);
-    }
-    Ok(())
-}
-
-fn run_scan(args: &ScanArgs) -> Result<()> {
-    let path = validate_scan_path(&args.path)?;
-
-    if args.migrate_to_env {
-        return run_migrate_flow(&path, args);
-    }
-
-    let mut config = VelkaConfig::load()?;
-
-    if let Some(ref profile_name) = args.profile {
-        config = config.with_profile(profile_name);
-    }
-    if args.verify {
-        config.scan.verify = true;
-    }
-
-    let config = Arc::new(config);
-
-    let redaction = RedactionConfig {
-        enabled: !args.no_redact && config.output.redact_secrets,
-        visible_chars: config.output.redact_visible_chars,
-    };
-
-    let (sender, receiver) = unbounded::<Sin>();
-
-    let files_to_scan = if args.diff {
-        match get_changed_files(&path) {
-            Ok(files) => Some(files),
-            Err(e) => {
-                log_error("git diff", &e);
-                None
-            }
+        Cli::Scan(args) => cli::scan::run_scan(
+            &args.path,
+            args.format,
+            args.mortal_only,
+            args.deep_scan,
+            args.complexity,
+            args.no_redact,
+            args.profile.as_deref(),
+            args.diff,
+            args.staged,
+            args.progress,
+            args.ci,
+            args.verify,
+            args.migrate_to_env,
+            args.env_file.as_deref(),
+            args.dry_run,
+            args.yes,
+            args.since.as_deref(),
+        ),
+        Cli::Stdin(args) => {
+            cli::scan::run_stdin(args.format, args.mortal_only, args.no_redact, args.ci)
         }
-    } else if args.staged {
-        match get_staged_files(&path) {
-            Ok(files) => Some(files),
-            Err(e) => {
-                log_error("git staged", &e);
-                None
+        Cli::InstallHook => cli::hooks::install_pre_commit_hook(false, false),
+        Cli::Init(args) => cli::init::run_init(&args.preset, args.force),
+        Cli::Honeytoken(args) => match args.command {
+            HoneytokenCommand::Generate(gen) => {
+                cli::scan::run_honeytoken(gen.target.as_deref(), gen.readme)
             }
+        },
+        Cli::Rules(args) => match args.command {
+            RulesCommand::List => cli::scan::run_rules_list(),
+            RulesCommand::Install(install) => {
+                cli::scan::run_rules_install(&install.source, install.name.as_deref())
+            }
+        },
+        Cli::Rotate(args) => cli::rotate::run_rotate(
+            &args.path,
+            args.rule.as_deref(),
+            args.mark_remediated,
+            args.commands,
+        ),
+        Cli::Hook(args) => match args.command {
+            HookCommand::Install(install) => {
+                cli::hooks::install_pre_commit_hook(install.force, install.strict)
+            }
+        },
+        Cli::Quarantine(args) => match args.command {
+            QuarantineCommand::List => cli::scan::run_quarantine_list(),
+            QuarantineCommand::Restore(restore) => cli::scan::run_quarantine_restore(&restore.name),
+        },
+        Cli::Lsp => {
+            let rt = tokio::runtime::Runtime::new()?;
+            rt.block_on(velka::engine::lsp::run_lsp())?;
+            Ok(())
         }
-    } else {
-        None
-    };
-
-    if let Some(files) = files_to_scan {
-        if files.is_empty() {
-            let output = format_output(vec![], args.format, &redaction, args.ci);
-            print!("{output}");
-            return Ok(());
-        }
-
-        let cache: Option<Arc<std::sync::RwLock<ScanCache>>> = if config.cache.enabled {
-            Some(Arc::new(std::sync::RwLock::new(ScanCache::new(
-                &config.cache.location,
-                &path,
-            ))))
-        } else {
-            None
-        };
-
-        for file_path in files {
-            let file_sender = sender.clone();
-            let file_config = Arc::clone(&config);
-            let cache_clone = cache.clone();
-            if let Err(e) =
-                scan_single_file(&file_path, &file_config, &file_sender, cache_clone.as_ref())
-            {
-                if std::env::var("VELKA_DEBUG").is_ok() {
-                    eprintln!("Error scanning {}: {}", file_path.display(), e);
-                }
-            }
-        }
-
-        if let Some(cache_rw) = cache {
-            if let Ok(cache_guard) = cache_rw.write() {
-                let _ = cache_guard.save();
-            }
-        }
-    } else {
-        let config_clone = Arc::clone(&config);
-        let sender1 = sender.clone();
-        let path_clone = path.clone();
-        let show_progress = args.progress;
-        std::thread::spawn(move || {
-            if let Err(e) =
-                investigate_with_progress(&path_clone, &config_clone, &sender1, show_progress)
-            {
-                log_error("scan", &e);
-            }
-        });
-    }
-
-    if args.deep_scan {
-        let path_git = path.clone();
-        let sender2 = sender.clone();
-        let config_git = Arc::clone(&config);
-        std::thread::spawn(move || {
-            if let Err(e) = scan_history(&path_git, &config_git, &sender2) {
-                log_error("git history", &e);
-            }
-        });
-    }
-
-    if args.complexity {
-        let path_comp = path.clone();
-        let sender3 = sender.clone();
-        std::thread::spawn(move || {
-            if let Err(e) = analyze_complexity(&path_comp, &sender3) {
-                log_error("complexity", &e);
-            }
-        });
-    }
-
-    drop(sender);
-
-    let mut sins: Vec<Sin> = receiver.iter().collect();
-
-    if args.mortal_only {
-        sins.retain(|sin| sin.severity == Severity::Mortal);
-    }
-
-    sins.sort_by(|a, b| {
-        a.path
-            .cmp(&b.path)
-            .then_with(|| a.line_number.cmp(&b.line_number))
-    });
-
-    let has_mortal = sins.iter().any(|s| s.severity == Severity::Mortal);
-
-    let output = format_output(sins, args.format, &redaction, args.ci);
-    print!("{output}");
-
-    if has_mortal {
-        std::process::exit(1);
-    }
-
-    Ok(())
-}
-
-fn run_init(args: &InitArgs) -> Result<()> {
-    let config_path = PathBuf::from("velka.toml");
-
-    if config_path.exists() && !args.force {
-        anyhow::bail!(
-            "velka.toml already exists. Use --force to overwrite the existing configuration."
-        );
-    }
-
-    let contents = match args.preset.as_str() {
-        "strict" => PRESET_STRICT,
-        "ci" => PRESET_CI,
-        "monorepo" => PRESET_MONOREPO,
-        _ => PRESET_BALANCED,
-    };
-
-    fs::write(&config_path, contents)
-        .with_context(|| format!("Failed to write configuration to {}", config_path.display()))?;
-
-    println!(
-        "velka.toml created with '{}' preset at {}",
-        args.preset,
-        config_path.display()
-    );
-
-    Ok(())
-}
-
-fn run_migrate_flow(path: &Path, args: &ScanArgs) -> Result<()> {
-    let env_file = args.env_file.as_deref().unwrap_or(Path::new(".env"));
-
-    if args.dry_run {
-        let report =
-            run_migrate(path, env_file, true, false).map_err(|e| anyhow::anyhow!("{e}"))?;
-        println!("{}", format_migrate_report(&report));
-        return Ok(());
-    }
-
-    if args.yes {
-        let report =
-            run_migrate(path, env_file, false, true).map_err(|e| anyhow::anyhow!("{e}"))?;
-        println!("{}", format_migrate_report(&report));
-        return Ok(());
-    }
-
-    let preview = run_migrate(path, env_file, true, false).map_err(|e| anyhow::anyhow!("{e}"))?;
-    println!("{}", format_migrate_report(&preview));
-    print!(
-        "Will update {} file(s) and create/update .env. Proceed? [y/N] ",
-        preview.files_updated.len()
-    );
-    std::io::Write::flush(&mut std::io::stdout())?;
-    let mut buf = String::new();
-    if std::io::stdin().read_line(&mut buf).is_ok()
-        && (buf.trim().eq_ignore_ascii_case("y") || buf.trim().eq_ignore_ascii_case("yes"))
-    {
-        let report =
-            run_migrate(path, env_file, false, true).map_err(|e| anyhow::anyhow!("{e}"))?;
-        println!("{}", format_migrate_report(&report));
-    }
-    Ok(())
-}
-
-fn validate_scan_path(path: &Path) -> Result<PathBuf> {
-    let canonical = path.canonicalize().with_context(|| "Invalid scan path")?;
-
-    let forbidden = ["/proc", "/sys", "/dev", "/etc/shadow", "/etc/passwd"];
-    for prefix in forbidden {
-        if canonical.starts_with(prefix) {
-            anyhow::bail!("Scanning system paths is not allowed for security reasons");
-        }
-    }
-
-    Ok(canonical)
-}
-
-fn log_error(context: &str, error: &dyn std::error::Error) {
-    if std::env::var("VELKA_DEBUG").is_ok() {
-        eprintln!("[VELKA DEBUG] Error during {context}: {error}");
-    } else {
-        eprintln!("Error during {context}: {}", sanitize_error(error));
-    }
-}
-
-fn sanitize_error(_e: &dyn std::error::Error) -> String {
-    "An error occurred (run with VELKA_DEBUG=1 for details)".to_string()
-}
-
-fn install_pre_commit_hook() -> Result<()> {
-    use std::fs;
-
-    let git_dir = PathBuf::from(".git");
-    if !git_dir.exists() {
-        anyhow::bail!("Not a git repository (.git directory not found)");
-    }
-
-    let hooks_dir = git_dir.join("hooks");
-    fs::create_dir_all(&hooks_dir)?;
-
-    let hook_path = hooks_dir.join("pre-commit");
-
-    if hook_path.exists() {
-        let existing = fs::read_to_string(&hook_path)?;
-        if !existing.contains("Installed by Velka") {
-            anyhow::bail!(
-                "Pre-commit hook already exists and was not installed by Velka. \
-                 Please backup and remove it manually, then retry."
+        Cli::Tui(args) => velka::ui::run_tui(&args.path, args.deep_scan),
+        Cli::Completions(args) => {
+            generate(
+                args.shell,
+                &mut Cli::command(),
+                "velka",
+                &mut std::io::stdout(),
             );
+            Ok(())
+        }
+        Cli::K8s(args) => match args.command {
+            K8sCommand::Webhook(w) => {
+                cli::scan::run_k8s_webhook(&w.addr, w.tls_cert.as_deref(), w.tls_key.as_deref())
+            }
+            K8sCommand::Scan(s) => cli::scan::run_k8s_scan(&s.file),
+        },
+        Cli::Runtime(args) => {
+            let rt = tokio::runtime::Runtime::new()?;
+            rt.block_on(velka::engine::runtime_scanner::run_runtime_monitor(
+                args.sources,
+                args.follow,
+            ))?;
+            Ok(())
         }
     }
-
-    let hook_content = r#"#!/bin/sh
-# Installed by Velka
-# Stops commit if Mortal Sins are found
-velka scan . --mortal-only --staged 2>/dev/null || velka scan . --mortal-only
-exit_code=$?
-if [ $exit_code -ne 0 ]; then
-    echo "Velka found mortal sins. Commit blocked."
-    exit 1
-fi
-"#;
-
-    fs::write(&hook_path, hook_content)?;
-
-    #[cfg(unix)]
-    {
-        use std::os::unix::fs::PermissionsExt;
-        let mut perms = fs::metadata(&hook_path)?.permissions();
-        perms.set_mode(0o755);
-        fs::set_permissions(&hook_path, perms)?;
-    }
-
-    println!(
-        "Pre-commit hook installed successfully at {}",
-        hook_path.display()
-    );
-    Ok(())
 }

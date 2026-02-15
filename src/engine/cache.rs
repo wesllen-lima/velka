@@ -8,6 +8,8 @@ use sha2::{Digest, Sha256};
 
 use crate::config::CacheLocation;
 
+const CACHE_EXT: &str = "bincode";
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct CacheEntry {
     pub file_hash: String,
@@ -34,16 +36,17 @@ impl ScanCache {
     #[must_use]
     pub fn new(location: &CacheLocation, project_root: &Path) -> Self {
         let project_path = match location {
-            CacheLocation::Project | CacheLocation::Both => {
-                Some(project_root.join(".velka-cache").join("cache.json"))
-            }
+            CacheLocation::Project | CacheLocation::Both => Some(
+                project_root
+                    .join(".velka-cache")
+                    .join(format!("cache.{CACHE_EXT}")),
+            ),
             CacheLocation::User => None,
         };
 
         let user_path = match location {
-            CacheLocation::User | CacheLocation::Both => {
-                ProjectDirs::from("", "", "velka").map(|d| d.cache_dir().join("scan_cache.json"))
-            }
+            CacheLocation::User | CacheLocation::Both => ProjectDirs::from("", "", "velka")
+                .map(|d| d.cache_dir().join(format!("scan_cache.{CACHE_EXT}"))),
             CacheLocation::Project => None,
         };
 
@@ -73,8 +76,8 @@ impl ScanCache {
     }
 
     fn load_from_file(path: &Path) -> Option<HashMap<String, CacheEntry>> {
-        let content = fs::read_to_string(path).ok()?;
-        serde_json::from_str(&content).ok()
+        let content = fs::read(path).ok()?;
+        bincode::deserialize(&content).ok()
     }
 
     pub fn save(&self) -> Result<(), std::io::Error> {
@@ -97,7 +100,7 @@ impl ScanCache {
         if let Some(parent) = path.parent() {
             fs::create_dir_all(parent)?;
         }
-        let content = serde_json::to_string_pretty(&self.entries)?;
+        let content = bincode::serialize(&self.entries).map_err(std::io::Error::other)?;
         let tmp_path = path.with_extension("tmp");
         fs::write(&tmp_path, &content)?;
         fs::rename(tmp_path, path)
@@ -174,5 +177,104 @@ mod tests {
 
         let result = cache.get("test.rs", "wrong_hash");
         assert!(result.is_none());
+    }
+
+    #[test]
+    fn test_cache_save_and_reload() {
+        let temp = TempDir::new().unwrap();
+
+        {
+            let mut cache = ScanCache::new(&CacheLocation::Project, temp.path());
+            let entry = CacheEntry {
+                file_hash: "hash1".to_string(),
+                rule_matches: vec![CachedMatch {
+                    line_number: 10,
+                    rule_id: "AWS_ACCESS_KEY".to_string(),
+                    severity: "Mortal".to_string(),
+                }],
+                scanned_at: 1234567890,
+            };
+            cache.insert("file1.rs".to_string(), entry);
+            cache.save().unwrap();
+        }
+
+        // Reload cache from disk
+        let cache2 = ScanCache::new(&CacheLocation::Project, temp.path());
+        let result = cache2.get("file1.rs", "hash1");
+        assert!(result.is_some());
+        let entry = result.unwrap();
+        assert_eq!(entry.rule_matches.len(), 1);
+        assert_eq!(entry.rule_matches[0].rule_id, "AWS_ACCESS_KEY");
+    }
+
+    #[test]
+    fn test_cache_insert_batch() {
+        let temp = TempDir::new().unwrap();
+        let mut cache = ScanCache::new(&CacheLocation::Project, temp.path());
+
+        let entries = vec![
+            (
+                "a.rs".to_string(),
+                CacheEntry {
+                    file_hash: "h1".to_string(),
+                    rule_matches: vec![],
+                    scanned_at: 0,
+                },
+            ),
+            (
+                "b.rs".to_string(),
+                CacheEntry {
+                    file_hash: "h2".to_string(),
+                    rule_matches: vec![],
+                    scanned_at: 0,
+                },
+            ),
+        ];
+
+        cache.insert_batch(entries);
+        assert!(cache.get("a.rs", "h1").is_some());
+        assert!(cache.get("b.rs", "h2").is_some());
+    }
+
+    #[test]
+    fn test_cache_clear_project() {
+        let temp = TempDir::new().unwrap();
+        let mut cache = ScanCache::new(&CacheLocation::Project, temp.path());
+
+        cache.insert(
+            "test.rs".to_string(),
+            CacheEntry {
+                file_hash: "h".to_string(),
+                rule_matches: vec![],
+                scanned_at: 0,
+            },
+        );
+        cache.save().unwrap();
+
+        cache.clear_project_cache();
+        assert!(cache.get("test.rs", "h").is_none());
+    }
+
+    #[test]
+    fn test_hash_content_deterministic() {
+        let content = b"deterministic content";
+        let h1 = ScanCache::hash_content(content);
+        let h2 = ScanCache::hash_content(content);
+        assert_eq!(h1, h2);
+    }
+
+    #[test]
+    fn test_hash_content_different_for_different_inputs() {
+        let h1 = ScanCache::hash_content(b"content_a");
+        let h2 = ScanCache::hash_content(b"content_b");
+        assert_ne!(h1, h2);
+    }
+
+    #[test]
+    fn test_cache_not_modified_initially() {
+        let temp = TempDir::new().unwrap();
+        let cache = ScanCache::new(&CacheLocation::Project, temp.path());
+        // Save should be a no-op when not modified
+        cache.save().unwrap();
     }
 }
