@@ -372,12 +372,41 @@ fn format_junit(sins: &[Sin], redaction: &RedactionConfig) -> String {
         xml.push('\n');
 
         if matches!(sin.severity, Severity::Mortal) {
+            let mut failure_body = format!("Line {}: {}", sin.line_number, escaped_snippet);
+            if let Some(confidence) = sin.confidence {
+                let _ = write!(failure_body, "\nConfidence: {:.0}%", confidence * 100.0);
+            }
+            if let Some(ref factors) = sin.confidence_factors {
+                if !factors.is_empty() {
+                    let _ = write!(failure_body, "\nFactors: {}", factors.join(", "));
+                }
+            }
+            if let Some(verified) = sin.verified {
+                let _ = write!(failure_body, "\nVerified: {verified}");
+            }
+            if is_honeytoken_sin(sin) {
+                failure_body.push_str("\nHoneytoken: true");
+            }
             let _ = write!(
                 xml,
-                r#"    <failure message="{}">Line {}: {}</failure>"#,
-                escaped_desc, sin.line_number, escaped_snippet
+                r#"    <failure message="{escaped_desc}">{failure_body}</failure>"#
             );
             xml.push('\n');
+        } else {
+            // Include metadata as system-out for non-failure test cases
+            let mut props = String::new();
+            if let Some(confidence) = sin.confidence {
+                let _ = write!(props, "Confidence: {:.0}%", confidence * 100.0);
+            }
+            if is_honeytoken_sin(sin) {
+                if !props.is_empty() {
+                    props.push_str("; ");
+                }
+                props.push_str("Honeytoken: true");
+            }
+            if !props.is_empty() {
+                let _ = writeln!(xml, "    <system-out>{}</system-out>", escape_xml(&props));
+            }
         }
 
         xml.push_str("  </testcase>\n");
@@ -396,7 +425,28 @@ fn format_sarif(sins: &[Sin], redaction: &RedactionConfig) -> String {
                 Severity::Mortal => "error",
                 Severity::Venial => "warning",
             };
-            serde_json::json!({
+
+            let mut properties = serde_json::Map::new();
+            if let Some(confidence) = sin.confidence {
+                properties.insert(
+                    "confidence".to_string(),
+                    serde_json::json!(format!("{:.0}%", confidence * 100.0)),
+                );
+                properties.insert("confidenceScore".to_string(), serde_json::json!(confidence));
+            }
+            if let Some(ref factors) = sin.confidence_factors {
+                if !factors.is_empty() {
+                    properties.insert("confidenceFactors".to_string(), serde_json::json!(factors));
+                }
+            }
+            if let Some(verified) = sin.verified {
+                properties.insert("verified".to_string(), serde_json::json!(verified));
+            }
+            if is_honeytoken_sin(sin) {
+                properties.insert("honeytoken".to_string(), serde_json::json!(true));
+            }
+
+            let mut result = serde_json::json!({
                 "ruleId": sin.rule_id,
                 "level": level,
                 "message": {
@@ -415,7 +465,13 @@ fn format_sarif(sins: &[Sin], redaction: &RedactionConfig) -> String {
                         }
                     }
                 }]
-            })
+            });
+
+            if !properties.is_empty() {
+                result["properties"] = serde_json::Value::Object(properties);
+            }
+
+            result
         })
         .collect();
 
@@ -684,6 +740,12 @@ fn format_report_html(report: &Report, redaction: &RedactionConfig) -> String {
     );
 
     html
+}
+
+fn is_honeytoken_sin(sin: &Sin) -> bool {
+    sin.description.contains("honeytoken")
+        || sin.snippet.contains("velka:honeytoken")
+        || sin.rule_id.contains("HONEYTOKEN")
 }
 
 fn escape_xml(s: &str) -> String {

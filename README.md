@@ -1,13 +1,16 @@
 # VELKA
 
-**English** | [Português (BR)](README.pt-BR.md)
+**English** | [Portugues (BR)](README.pt-BR.md)
 
 ---
 
 **The Code Sin Judge**
 
+[![CI](https://github.com/wesllen-lima/velka/actions/workflows/ci.yml/badge.svg)](https://github.com/wesllen-lima/velka/actions/workflows/ci.yml)
+[![crates.io](https://img.shields.io/crates/v/velka.svg)](https://crates.io/crates/velka)
+[![docs.rs](https://docs.rs/velka/badge.svg)](https://docs.rs/velka)
+[![Downloads](https://img.shields.io/crates/d/velka.svg)](https://crates.io/crates/velka)
 [![Rust](https://img.shields.io/badge/Rust-1.70%2B-orange?logo=rust)](https://www.rust-lang.org/)
-[![Release](https://img.shields.io/badge/Release-v1.2.0-green)](https://github.com/wesllen-lima/velka/releases)
 [![License](https://img.shields.io/badge/License-MIT%2FApache--2.0-blue)](LICENSE)
 
 > *"Thou who art Undead, art chosen... to expose the guilty."*
@@ -16,13 +19,18 @@
 
 ## Features
 
-- **52 Detection Rules**: AWS, GCP, Azure, GitHub, Stripe, SendGrid, Twilio, Datadog, Cloudflare, Supabase, Vercel, and more
+- **52+ Detection Rules**: AWS, GCP, Azure, GitHub, Stripe, SendGrid, Twilio, Datadog, Cloudflare, Supabase, Vercel, and more
 - **Privacy First**: Zero telemetry, no network calls, secrets redacted by default
 - **High Performance**: Memory-mapped I/O, parallel scanning, compiled regex
 - **CI/CD Ready**: JUnit, SARIF, CSV, Markdown, HTML output formats
 - **Incremental Scanning**: `--diff` and `--staged` for fast pre-commit checks
 - **Git Forensics**: `--deep-scan` finds secrets buried in commit history
 - **Library API**: Use as a Rust crate in your own tools
+- **LSP Server**: Real-time secret detection in your editor
+- **Interactive TUI**: Terminal dashboard for triaging findings
+- **ML Classifier**: Ensemble scoring for <0.1% false positives
+- **K8s Admission Controller**: Block Pods with secrets in manifests
+- **Runtime Log Scanner**: Monitor container stdout for secret leaks
 
 ---
 
@@ -65,11 +73,11 @@ use velka::{scan, Severity};
 
 fn main() -> velka::VelkaResult<()> {
     let sins = velka::scan(std::path::Path::new("."))?;
-    
+
     let mortal_count = sins.iter()
         .filter(|s| s.severity == Severity::Mortal)
         .count();
-    
+
     if mortal_count > 0 {
         std::process::exit(1);
     }
@@ -139,6 +147,193 @@ velka install-hook
 
 ---
 
+## LSP Server (Editor Integration)
+
+Velka includes a built-in Language Server Protocol server that provides real-time secret detection as you type.
+
+<!-- TODO: Replace with actual GIF recording -->
+<!-- ![Velka LSP Demo](docs/assets/lsp-demo.gif) -->
+
+### Setup
+
+```bash
+# Start the LSP server (stdio transport)
+velka lsp
+```
+
+### VS Code
+
+Add to your `settings.json`:
+
+```json
+{
+  "velka.lsp.enabled": true,
+  "velka.lsp.path": "velka"
+}
+```
+
+Or use the VS Code extension in `vscode-extension/`.
+
+### Neovim (nvim-lspconfig)
+
+```lua
+require('lspconfig').velka.setup{
+  cmd = { "velka", "lsp" },
+  filetypes = { "*" },
+}
+```
+
+### Features
+
+- Diagnostics on save: warnings/errors for detected secrets
+- Works with any editor supporting LSP (VS Code, Neovim, Helix, Zed, Emacs)
+- Uses the same rule engine and ML classifier as the CLI
+- Hot-reloads dynamic rules from `~/.velka/rules.d/`
+
+---
+
+## Interactive TUI
+
+A full terminal dashboard for triaging and managing secret findings.
+
+<!-- TODO: Replace with actual GIF recording -->
+<!-- ![Velka TUI Demo](docs/assets/tui-demo.gif) -->
+
+```bash
+# Launch TUI on current directory
+velka tui .
+
+# Include git history findings
+velka tui . --deep-scan
+```
+
+### Controls
+
+| Key | Action |
+|-----|--------|
+| `j`/`k` or arrows | Navigate findings |
+| `Enter` | View finding details with syntax highlighting |
+| `e` | Open entropy visualizer |
+| `q` | Quit |
+| `?` | Help |
+
+### Features
+
+- File explorer with syntax-highlighted code preview
+- Entropy density visualization (bar charts)
+- ML confidence scores per finding
+- Keyboard-driven workflow for security triage
+
+---
+
+## ML Classifier
+
+Velka uses an ensemble scoring system to achieve <0.1% false positive rate. No external ML runtime required.
+
+### How it works
+
+1. **Pattern match** (regex) establishes base confidence
+2. **Shannon entropy** filters low-entropy false positives
+3. **Context scoring** analyzes surrounding code (assignments, comments, tests)
+4. **ML features**: character class distribution, bigram frequency, structural analysis
+5. **Final confidence** = weighted blend of all factors
+
+```bash
+# Verify output includes confidence scores
+velka scan . --format json | jq '.[].confidence'
+```
+
+See [docs/architecture.md](docs/architecture.md) for the full technical explanation.
+
+---
+
+## Kubernetes Integration
+
+### Admission Controller (Webhook)
+
+Block Pods and Deployments that contain secrets in their manifests before they reach the cluster.
+
+```bash
+# Start admission webhook (plain HTTP for development)
+velka k8s webhook --addr 0.0.0.0:8443
+
+# With TLS (production)
+velka k8s webhook --addr 0.0.0.0:8443 --tls-cert cert.pem --tls-key key.pem
+```
+
+Register with Kubernetes:
+
+```yaml
+apiVersion: admissionregistration.k8s.io/v1
+kind: ValidatingWebhookConfiguration
+metadata:
+  name: velka-secret-scanner
+webhooks:
+  - name: velka.security.io
+    clientConfig:
+      service:
+        name: velka-webhook
+        namespace: velka-system
+        path: /validate
+    rules:
+      - apiGroups: [""]
+        resources: ["pods", "secrets", "configmaps"]
+        apiVersions: ["v1"]
+        operations: ["CREATE", "UPDATE"]
+    failurePolicy: Ignore
+    sideEffects: None
+    admissionReviewVersions: ["v1"]
+```
+
+### Manifest Scanning
+
+Scan local YAML files without running the webhook server:
+
+```bash
+velka k8s scan deployment.yaml
+```
+
+---
+
+## Runtime Log Scanner
+
+Monitor container logs in real-time for accidentally leaked secrets.
+
+```bash
+# Scan from stdin (pipe from docker/kubectl)
+kubectl logs -f my-pod | velka runtime
+
+# Scan log files
+velka runtime /var/log/app.log /var/log/worker.log
+
+# Follow mode (tail -f behavior)
+velka runtime /var/log/app.log --follow
+```
+
+Exits with code 1 if mortal secrets are detected. Useful as a sidecar container or log monitoring daemon.
+
+---
+
+## Shell Completions
+
+Generate autocompletion scripts for your shell:
+
+```bash
+# Bash
+velka completions bash > ~/.local/share/bash-completion/completions/velka
+
+# Zsh
+velka completions zsh > ~/.zfunc/_velka
+
+# Fish
+velka completions fish > ~/.config/fish/completions/velka.fish
+
+# PowerShell
+velka completions powershell > velka.ps1
+```
+
+---
+
 ## Configuration
 
 Create `velka.toml` in your project root:
@@ -175,6 +370,12 @@ output.redact_secrets = false
 ```
 
 **Inline ignores**: Add `velka:ignore` comment on any line to skip it.
+
+### Quick Init
+
+```bash
+velka init --preset balanced  # also: strict, ci, monorepo
+```
 
 ---
 
@@ -227,20 +428,22 @@ output.redact_secrets = false
 
 ## CI/CD Integration
 
-### GitHub Actions
-
-Use the Velka action (installs from [crates.io](https://crates.io/crates/velka) then scans; requires Velka to be published):
+### GitHub Actions (Official Action)
 
 ```yaml
 - uses: actions/checkout@v4
-- uses: wesllen-lima/velka@main
+- uses: wesllen-lima/velka/.github/actions/velka-scan@main
   with:
     path: .
-    fail-on-secrets: true
-    format: terminal  # or sarif, json, junit, etc.
+    format: terminal
+    mortal-only: 'true'
+    fail-on-secrets: 'true'
+    # diff-only: 'true'    # PR mode: only scan changed files
+    # deep-scan: 'true'    # Also scan git history
+    # since: 'main'        # Incremental: changes since branch
 ```
 
-Or run Velka manually and upload SARIF:
+### GitHub Actions (Manual + SARIF)
 
 ```yaml
 - uses: actions/checkout@v4
@@ -265,7 +468,7 @@ velka-scan:
 
 ### Pre-commit Hook
 
-**Option 1 – pre-commit framework** (add to `.pre-commit-config.yaml`):
+**Option 1 - pre-commit framework** (add to `.pre-commit-config.yaml`):
 
 ```yaml
 repos:
@@ -277,10 +480,47 @@ repos:
 
 Requires `velka` on PATH (`cargo install velka`). Then run `pre-commit run velka`.
 
-**Option 2 – Git hook only**:
+**Option 2 - Git hook only**:
 
 ```bash
-velka install-hook
+velka hook install           # Standard (blocks mortal only)
+velka hook install --strict  # Strict (blocks all sins)
+```
+
+---
+
+## Honeytokens
+
+Generate and inject canary tokens to detect unauthorized access:
+
+```bash
+# Generate and inject to .env.example
+velka honeytoken generate --target .env.example
+
+# Also inject to README.md
+velka honeytoken generate --target .env.example --readme
+```
+
+Velka automatically detects its own honeytokens during scans and flags them separately.
+
+---
+
+## Secret Rotation
+
+Get step-by-step rotation guides for detected secrets:
+
+```bash
+# Show rotation guidance
+velka rotate .
+
+# Filter by rule
+velka rotate . --rule AWS_ACCESS_KEY
+
+# Show executable CLI commands
+velka rotate . --commands
+
+# Mark as remediated
+velka rotate . --mark-remediated
 ```
 
 ---
@@ -330,14 +570,15 @@ Velka is designed to be significantly faster than alternatives (e.g. TruffleHog,
 
 ---
 
-## VS Code Extension (MVP)
+## Architecture
 
-A minimal VS Code extension is in `vscode-extension/`. It adds a command **Velka: Scan for secrets** that runs Velka on the workspace and shows output in a channel. Requires `velka` on PATH (`cargo install velka`). See `vscode-extension/README.md` for setup.
+For a deep dive into the Ensemble Scoring engine, rule plugin system, and module map, see **[docs/architecture.md](docs/architecture.md)**.
 
 ---
 
 ## Documentation
 
+- **[Architecture](docs/architecture.md)** - Engine internals and scoring system
 - **[Contributing](CONTRIBUTING.md)** - How to contribute
 - **[Changelog](CHANGELOG.md)** - Version history
 - **[Security Policy](SECURITY.md)** - Vulnerability reporting

@@ -1,563 +1,784 @@
 <!DOCTYPE html>
-<html lang="pt-BR" data-theme="dark">
+<html lang="en">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Velka | The Code Sin Judge</title>
-    <script src="https://cdn.tailwindcss.com"></script>
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500;700&family=Crimson+Pro:ital,wght@0,400;0,600;1,400&display=swap" rel="stylesheet">
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/gsap/3.12.2/gsap.min.js"></script>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/gsap/3.12.2/ScrollTrigger.min.js"></script>
-    
-    <script>
-        tailwind.config = {
-            darkMode: 'class',
-            theme: {
-                extend: {
-                    fontFamily: {
-                        sans: ['Inter', 'system-ui', 'sans-serif'],
-                        mono: ['JetBrains Mono', 'monospace'],
-                        serif: ['Crimson Pro', 'Georgia', 'serif'],
-                    },
-                    colors: {
-                        bg: '#050508',
-                        surface: '#0f0f13',
-                        sin: { DEFAULT: '#dc2626', glow: 'rgba(220, 38, 38, 0.5)' },
-                        virtue: '#10b981',
-                        gold: '#f59e0b',
-                    }
-                }
-            }
-        }
-    </script>
-    
+    <title>Velka | The Code Sin Judge - Secret Scanner for Rust</title>
+    <meta name="description" content="Velka: blazing-fast secret scanner written in Rust. 52+ rules, ML classifier, LSP server, TUI dashboard, K8s admission controller. Zero telemetry.">
+    <meta property="og:title" content="Velka | The Code Sin Judge">
+    <meta property="og:description" content="Blazing-fast secret scanner written in Rust. 52+ rules, ML classifier, LSP server, K8s admission controller. Zero telemetry.">
+    <meta property="og:type" content="website">
+    <link rel="canonical" href="https://wesllen-lima.github.io/velka/">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet">
     <style>
-        :root { --ease-out-expo: cubic-bezier(0.16, 1, 0.3, 1); }
-        body { background-color: #050508; color: #fafafa; font-family: 'Inter', sans-serif; overflow-x: hidden; }
-        
-        /* Efeitos */
-        .glass {
-            background: rgba(15, 15, 19, 0.7);
-            backdrop-filter: blur(20px) saturate(180%);
-            border: 1px solid rgba(255, 255, 255, 0.08);
+        /* ===== RESET & BASE ===== */
+        *, *::before, *::after { margin: 0; padding: 0; box-sizing: border-box; }
+        html { scroll-behavior: smooth; scroll-padding-top: 80px; }
+        body {
+            background-color: #0d1117;
+            color: #e6edf3;
+            font-family: 'Inter', system-ui, -apple-system, sans-serif;
+            line-height: 1.6;
+            overflow-x: hidden;
+            -webkit-font-smoothing: antialiased;
         }
-        
-        .text-glow-red { text-shadow: 0 0 40px rgba(220, 38, 38, 0.6); }
-        .text-gradient {
-            background: linear-gradient(135deg, #dc2626 0%, #f59e0b 100%);
-            background-clip: text;
-            -webkit-background-clip: text;
-            -webkit-text-fill-color: transparent;
+        a { color: inherit; text-decoration: none; }
+        code, pre { font-family: 'JetBrains Mono', monospace; }
+        img { max-width: 100%; height: auto; }
+
+        /* ===== CSS VARIABLES ===== */
+        :root {
+            --bg: #0d1117;
+            --bg-surface: #161b22;
+            --bg-surface-2: #1c2128;
+            --border: #30363d;
+            --text-primary: #e6edf3;
+            --text-secondary: #8b949e;
+            --text-muted: #6e7681;
+            --green: #10b981;
+            --green-dim: rgba(16, 185, 129, 0.15);
+            --red: #dc2626;
+            --red-dim: rgba(220, 38, 38, 0.15);
+            --yellow: #f59e0b;
+            --blue: #3b82f6;
+            --max-width: 1200px;
         }
-        
-        /* Migração - Transferência de Secrets */
-        .secret-pill {
-            background: linear-gradient(135deg, #dc2626, #991b1b);
-            box-shadow: 0 4px 20px rgba(220, 38, 38, 0.4);
-            transition: all 0.8s var(--ease-out-expo);
+
+        /* ===== LAYOUT ===== */
+        .container {
+            max-width: var(--max-width);
+            margin: 0 auto;
+            padding: 0 24px;
         }
-        
-        .secret-pill.migrating {
-            transform: translate(var(--target-x), var(--target-y)) scale(0.8);
+        .section {
+            padding: 100px 0;
+        }
+
+        /* ===== ANIMATIONS ===== */
+        @keyframes fadeInUp {
+            from { opacity: 0; transform: translateY(30px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+        @keyframes fadeIn {
+            from { opacity: 0; }
+            to { opacity: 1; }
+        }
+        @keyframes pulse-glow {
+            0%, 100% { box-shadow: 0 0 20px rgba(16, 185, 129, 0.3); }
+            50% { box-shadow: 0 0 40px rgba(16, 185, 129, 0.6); }
+        }
+        @keyframes blink {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0; }
+        }
+        @keyframes typing-cursor {
+            0%, 100% { border-right-color: var(--green); }
+            50% { border-right-color: transparent; }
+        }
+        @keyframes slide-in-left {
+            from { opacity: 0; transform: translateX(-40px); }
+            to { opacity: 1; transform: translateX(0); }
+        }
+        @keyframes slide-in-right {
+            from { opacity: 0; transform: translateX(40px); }
+            to { opacity: 1; transform: translateX(0); }
+        }
+        @keyframes count-pulse {
+            0% { transform: scale(1); }
+            50% { transform: scale(1.05); }
+            100% { transform: scale(1); }
+        }
+        @keyframes float {
+            0%, 100% { transform: translateY(0); }
+            50% { transform: translateY(-6px); }
+        }
+        @keyframes shimmer {
+            0% { background-position: -200% 0; }
+            100% { background-position: 200% 0; }
+        }
+
+        .animate-on-scroll {
             opacity: 0;
+            transform: translateY(30px);
+            transition: opacity 0.7s ease, transform 0.7s ease;
         }
-        
-        .secret-pill.migrated {
-            background: linear-gradient(135deg, #10b981, #059669);
-            box-shadow: 0 4px 20px rgba(16, 185, 129, 0.4);
+        .animate-on-scroll.visible {
+            opacity: 1;
+            transform: translateY(0);
         }
-        
-        .code-line {
-            transition: all 0.5s ease;
+
+        /* ===== HEADER / NAV ===== */
+        .header {
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            z-index: 100;
+            background: rgba(13, 17, 23, 0.85);
+            backdrop-filter: blur(16px);
+            border-bottom: 1px solid var(--border);
+        }
+        .header-inner {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            height: 64px;
+        }
+        .header-logo {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            font-weight: 700;
+            font-size: 18px;
+        }
+        .header-logo-icon {
+            width: 32px;
+            height: 32px;
+            background: var(--red);
+            border-radius: 8px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-weight: 900;
+            font-size: 16px;
+            color: #fff;
+        }
+        .header-nav {
+            display: flex;
+            align-items: center;
+            gap: 28px;
+        }
+        .header-nav a {
+            font-size: 14px;
+            color: var(--text-secondary);
+            transition: color 0.2s;
+        }
+        .header-nav a:hover { color: var(--text-primary); }
+        .header-github {
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            padding: 8px 16px;
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            font-size: 14px;
+            font-weight: 500;
+            transition: background 0.2s, border-color 0.2s;
+        }
+        .header-github:hover {
+            background: var(--bg-surface);
+            border-color: var(--text-muted);
+        }
+
+        /* ===== HERO ===== */
+        .hero {
+            padding: 160px 0 80px;
+            text-align: center;
             position: relative;
         }
-        
-        .code-line.removed {
-            background: rgba(220, 38, 38, 0.1);
-            text-decoration: line-through;
-            opacity: 0.5;
-        }
-        
-        .code-line.added {
-            background: rgba(16, 185, 129, 0.1);
-            border-left: 3px solid #10b981;
-            padding-left: 12px;
-        }
-        
-        /* Shimmer effect para o .env */
-        .env-shimmer {
-            position: relative;
-            overflow: hidden;
-        }
-        
-        .env-shimmer::after {
+        .hero::before {
             content: '';
             position: absolute;
-            top: 0; left: -100%;
-            width: 50%; height: 100%;
-            background: linear-gradient(90deg, transparent, rgba(16, 185, 129, 0.2), transparent);
-            animation: shimmer 2s infinite;
-        }
-        
-        @keyframes shimmer {
-            100% { left: 200%; }
-        }
-        
-        /* Partículas de migração */
-        .migration-particle {
-            position: absolute;
-            width: 4px; height: 4px;
-            background: #dc2626;
-            border-radius: 50%;
+            top: 0;
+            left: 50%;
+            transform: translateX(-50%);
+            width: 600px;
+            height: 600px;
+            background: radial-gradient(circle, rgba(220, 38, 38, 0.08) 0%, transparent 70%);
             pointer-events: none;
+        }
+        .hero-title {
+            font-size: clamp(56px, 10vw, 120px);
+            font-weight: 900;
+            letter-spacing: -3px;
+            line-height: 1;
+            margin-bottom: 16px;
+            animation: fadeInUp 0.8s ease both;
+            background: linear-gradient(135deg, #e6edf3 0%, #8b949e 100%);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+        }
+        .hero-subtitle {
+            font-size: clamp(18px, 3vw, 28px);
+            font-weight: 300;
+            color: var(--red);
+            letter-spacing: 4px;
+            text-transform: uppercase;
+            margin-bottom: 24px;
+            animation: fadeInUp 0.8s ease 0.15s both;
+        }
+        .hero-tagline {
+            font-size: clamp(16px, 2vw, 20px);
+            color: var(--text-secondary);
+            max-width: 640px;
+            margin: 0 auto 40px;
+            animation: fadeInUp 0.8s ease 0.3s both;
+        }
+        .hero-tagline strong {
+            color: var(--text-primary);
+            font-weight: 600;
+        }
+        .install-btn {
+            display: inline-flex;
+            align-items: center;
+            gap: 10px;
+            padding: 16px 32px;
+            background: var(--bg-surface);
+            border: 1px solid var(--border);
+            border-radius: 12px;
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 16px;
+            color: var(--green);
+            cursor: pointer;
+            transition: all 0.3s ease;
+            animation: fadeInUp 0.8s ease 0.45s both;
+            position: relative;
+        }
+        .install-btn:hover {
+            border-color: var(--green);
+            animation: pulse-glow 2s infinite;
+        }
+        .install-btn .prompt {
+            color: var(--text-muted);
+            user-select: none;
+        }
+        .install-btn .copy-hint {
+            font-size: 11px;
+            color: var(--text-muted);
+            font-family: 'Inter', sans-serif;
+            margin-left: 8px;
+        }
+
+        /* ===== BADGES ===== */
+        .badges {
+            display: flex;
+            flex-wrap: wrap;
+            justify-content: center;
+            gap: 8px;
+            padding: 40px 0 20px;
+            animation: fadeIn 0.8s ease 0.6s both;
+        }
+        .badges img {
+            height: 22px;
+            border-radius: 4px;
+        }
+
+        /* ===== FEATURES GRID ===== */
+        .features-heading {
+            text-align: center;
+            margin-bottom: 56px;
+        }
+        .features-heading h2 {
+            font-size: clamp(28px, 4vw, 40px);
+            font-weight: 700;
+            margin-bottom: 12px;
+        }
+        .features-heading p {
+            color: var(--text-secondary);
+            font-size: 16px;
+            max-width: 500px;
+            margin: 0 auto;
+        }
+        .features-grid {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 20px;
+        }
+        .feature-card {
+            background: var(--bg-surface);
+            border: 1px solid var(--border);
+            border-radius: 16px;
+            padding: 32px 24px;
+            transition: transform 0.3s ease, border-color 0.3s ease, box-shadow 0.3s ease;
+        }
+        .feature-card:hover {
+            transform: translateY(-4px);
+            border-color: var(--text-muted);
+            box-shadow: 0 8px 30px rgba(0, 0, 0, 0.3);
+        }
+        .feature-icon {
+            font-size: 32px;
+            margin-bottom: 16px;
+            display: block;
+        }
+        .feature-card h3 {
+            font-size: 16px;
+            font-weight: 600;
+            margin-bottom: 8px;
+        }
+        .feature-card p {
+            font-size: 14px;
+            color: var(--text-secondary);
+            line-height: 1.5;
+        }
+        .feature-card.green-accent:hover { border-color: var(--green); }
+        .feature-card.red-accent:hover { border-color: var(--red); }
+        .feature-card.blue-accent:hover { border-color: var(--blue); }
+        .feature-card.yellow-accent:hover { border-color: var(--yellow); }
+
+        /* ===== TERMINAL / LIVE DEMO ===== */
+        .terminal {
+            background: #010409;
+            border: 1px solid var(--border);
+            border-radius: 16px;
+            overflow: hidden;
+            max-width: 800px;
+            margin: 0 auto;
+            box-shadow: 0 20px 60px rgba(0, 0, 0, 0.5);
+        }
+        .terminal-bar {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            padding: 12px 16px;
+            background: var(--bg-surface);
+            border-bottom: 1px solid var(--border);
+        }
+        .terminal-dot {
+            width: 12px;
+            height: 12px;
+            border-radius: 50%;
+        }
+        .terminal-dot.red { background: #ff5f57; }
+        .terminal-dot.yellow { background: #febc2e; }
+        .terminal-dot.green { background: #28c840; }
+        .terminal-title {
+            margin-left: auto;
+            font-size: 12px;
+            color: var(--text-muted);
+            font-family: 'JetBrains Mono', monospace;
+        }
+        .terminal-body {
+            padding: 24px;
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 13px;
+            line-height: 1.8;
+        }
+        .terminal-body .prompt-line {
+            color: var(--text-muted);
+        }
+        .terminal-body .prompt-line .cmd {
+            color: var(--text-primary);
+        }
+        .terminal-body .info {
+            color: var(--text-muted);
+        }
+        .terminal-body .finding {
+            display: flex;
+            gap: 12px;
+            flex-wrap: wrap;
+        }
+        .terminal-body .severity-mortal {
+            color: var(--red);
+            font-weight: 700;
+        }
+        .terminal-body .severity-venial {
+            color: var(--yellow);
+            font-weight: 700;
+        }
+        .terminal-body .file-loc {
+            color: var(--text-muted);
+        }
+        .terminal-body .rule-name {
+            color: var(--text-secondary);
+        }
+        .terminal-body .confidence {
+            color: var(--yellow);
+            opacity: 0.8;
+        }
+        .terminal-body .summary {
+            margin-top: 16px;
+            padding-top: 12px;
+            border-top: 1px solid var(--border);
+            color: var(--text-muted);
+        }
+        .terminal-body .summary .mortal-count { color: var(--red); }
+        .terminal-body .summary .venial-count { color: var(--yellow); }
+        .terminal-body .summary .sep { color: var(--text-muted); margin: 0 6px; }
+
+        /* ===== INSTALL SECTION ===== */
+        .install-grid {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 16px;
+            max-width: 900px;
+            margin: 0 auto;
+        }
+        .install-card {
+            background: var(--bg-surface);
+            border: 1px solid var(--border);
+            border-radius: 12px;
+            padding: 24px;
+        }
+        .install-card .label {
+            font-size: 12px;
+            color: var(--text-muted);
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            margin-bottom: 12px;
+            font-weight: 500;
+        }
+        .install-card code {
+            display: block;
+            padding: 12px 16px;
+            background: #010409;
+            border-radius: 8px;
+            font-size: 13px;
+            color: var(--green);
+            word-break: break-all;
+        }
+        .install-card .note {
+            font-size: 12px;
+            color: var(--text-muted);
+            margin-top: 8px;
+        }
+
+        /* ===== BENCHMARKS ===== */
+        .bench-grid {
+            display: grid;
+            grid-template-columns: repeat(4, 1fr);
+            gap: 20px;
+            max-width: 900px;
+            margin: 0 auto;
+        }
+        .bench-card {
+            text-align: center;
+            padding: 32px 16px;
+            background: var(--bg-surface);
+            border: 1px solid var(--border);
+            border-radius: 16px;
+            transition: transform 0.3s ease, border-color 0.3s ease;
+        }
+        .bench-card:hover {
+            transform: translateY(-4px);
+            border-color: var(--green);
+        }
+        .bench-value {
+            font-size: 36px;
+            font-weight: 800;
+            font-family: 'JetBrains Mono', monospace;
+            margin-bottom: 8px;
+        }
+        .bench-value.green { color: var(--green); }
+        .bench-value.red { color: var(--red); }
+        .bench-value.blue { color: var(--blue); }
+        .bench-value.yellow { color: var(--yellow); }
+        .bench-label {
+            font-size: 14px;
+            color: var(--text-secondary);
+        }
+
+        /* ===== FOOTER ===== */
+        .footer {
+            border-top: 1px solid var(--border);
+            padding: 40px 0;
+        }
+        .footer-inner {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            flex-wrap: wrap;
+            gap: 16px;
+        }
+        .footer-left {
+            display: flex;
+            align-items: center;
+            gap: 16px;
+            font-size: 14px;
+            color: var(--text-muted);
+        }
+        .footer-links {
+            display: flex;
+            gap: 24px;
+            font-size: 14px;
+        }
+        .footer-links a {
+            color: var(--text-muted);
+            transition: color 0.2s;
+        }
+        .footer-links a:hover { color: var(--text-primary); }
+        .footer-rust {
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            color: var(--text-muted);
+            font-size: 13px;
+        }
+
+        /* ===== SECTION DIVIDER ===== */
+        .section-divider {
+            width: 60px;
+            height: 2px;
+            background: var(--border);
+            margin: 0 auto 56px;
+        }
+
+        /* ===== RESPONSIVE ===== */
+        @media (max-width: 900px) {
+            .features-grid {
+                grid-template-columns: repeat(2, 1fr);
+            }
+            .install-grid {
+                grid-template-columns: 1fr;
+            }
+            .bench-grid {
+                grid-template-columns: repeat(2, 1fr);
+            }
+            .header-nav { display: none; }
+        }
+        @media (max-width: 600px) {
+            .features-grid {
+                grid-template-columns: 1fr;
+            }
+            .bench-grid {
+                grid-template-columns: repeat(2, 1fr);
+            }
+            .hero { padding: 120px 0 60px; }
+            .section { padding: 64px 0; }
+            .terminal-body { padding: 16px; font-size: 11px; }
+            .terminal-body .finding { gap: 6px; }
+            .footer-inner { flex-direction: column; text-align: center; }
         }
     </style>
 </head>
-<body class="antialiased">
+<body>
 
-    <!-- Header fixo -->
-    <header class="fixed top-0 w-full z-50 glass border-b border-white/10 transition-all duration-300" id="header">
-        <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-            <div class="flex justify-between items-center h-20">
-                <a href="#" class="flex items-center gap-3">
-                    <div class="w-10 h-10 bg-red-600 rounded-lg flex items-center justify-center text-white font-bold text-xl">V</div>
-                    <span class="text-xl font-bold">velka</span>
-                </a>
-                <nav class="hidden md:flex items-center gap-8">
-                    <a href="#redemption" class="text-sm text-gray-400 hover:text-white transition-colors">Migration</a>
-                    <a href="#performance" class="text-sm text-gray-400 hover:text-white transition-colors">Performance</a>
-                    <a href="#install" class="text-sm text-gray-400 hover:text-white transition-colors">Install</a>
-                </nav>
-                <a href="https://github.com/wesllen-lima/velka" class="px-4 py-2 glass rounded-lg text-sm font-medium hover:bg-white/10 transition-all">GitHub</a>
-            </div>
+    <!-- ===== HEADER ===== -->
+    <header class="header">
+        <div class="container header-inner">
+            <a href="#" class="header-logo">
+                <div class="header-logo-icon">V</div>
+                <span>velka</span>
+            </a>
+            <nav class="header-nav">
+                <a href="#features">Features</a>
+                <a href="#demo">Demo</a>
+                <a href="#install">Install</a>
+                <a href="#benchmarks">Benchmarks</a>
+            </nav>
+            <a href="https://github.com/wesllen-lima/velka" class="header-github">
+                <svg width="16" height="16" fill="currentColor" viewBox="0 0 24 24"><path d="M12 0c-6.626 0-12 5.373-12 12 0 5.302 3.438 9.8 8.207 11.387.599.111.793-.261.793-.577v-2.234c-3.338.726-4.033-1.416-4.033-1.416-.546-1.387-1.333-1.756-1.333-1.756-1.089-.745.083-.729.083-.729 1.205.084 1.839 1.237 1.839 1.237 1.07 1.834 2.807 1.304 3.492.997.107-.775.418-1.305.762-1.604-2.665-.305-5.467-1.334-5.467-5.931 0-1.311.469-2.381 1.236-3.221-.124-.303-.535-1.524.117-3.176 0 0 1.008-.322 3.301 1.23.957-.266 1.983-.399 3.003-.404 1.02.005 2.047.138 3.006.404 2.291-1.552 3.297-1.23 3.297-1.23.653 1.653.242 2.874.118 3.176.77.84 1.235 1.911 1.235 3.221 0 4.609-2.807 5.624-5.479 5.921.43.372.823 1.102.823 2.222v3.293c0 .319.192.694.801.576 4.765-1.589 8.199-6.086 8.199-11.386 0-6.627-5.373-12-12-12z"/></svg>
+                GitHub
+            </a>
         </div>
     </header>
 
-    <!-- Hero -->
-    <section class="pt-32 pb-20 lg:pt-40 lg:pb-32 relative overflow-hidden">
-        <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 relative z-10">
-            <div class="grid lg:grid-cols-2 gap-12 items-center">
-                <div class="space-y-8">
-                    <div class="inline-flex items-center gap-2 px-3 py-1.5 rounded-full bg-red-950/30 border border-red-900/30 text-red-400 text-xs font-mono">
-                        <span class="w-1.5 h-1.5 rounded-full bg-red-500 animate-pulse"></span>
-                        v1.2 — Auto-Migration Available
-                    </div>
-                    
-                    <h1 class="text-5xl lg:text-7xl font-bold tracking-tight leading-[1.1]">
-                        <span class="block text-gray-400 font-serif italic text-4xl lg:text-5xl mb-4">"Confess your sins...</span>
-                        <span class="block">and be</span>
-                        <span class="block text-gradient text-glow-red">redeemed."</span>
-                    </h1>
-                    
-                    <p class="text-lg text-gray-400 max-w-xl leading-relaxed">
-                        Não apenas detecte secrets. <span class="text-white font-semibold">Automatically extract them</span> 
-                        para .env com um comando. Zero telemetria. Escrito em Rust.
-                    </p>
-                    
-                    <div class="flex flex-wrap gap-4">
-                        <a href="#redemption" class="group flex items-center gap-2 px-8 py-4 bg-red-600 hover:bg-red-700 text-white rounded-xl font-semibold transition-all">
-                            <span>Ver Redenção</span>
-                            <svg class="w-5 h-5 group-hover:translate-x-1 transition-transform" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 7l5 5m0 0l-5 5m5-5H6"/></svg>
-                        </a>
-                    </div>
-                </div>
+    <!-- ===== HERO ===== -->
+    <section class="hero">
+        <div class="container">
+            <h1 class="hero-title">VELKA</h1>
+            <p class="hero-subtitle">The Code Sin Judge</p>
+            <p class="hero-tagline">
+                <strong>Blazing-fast secret scanning</strong> written in Rust.
+                Detect leaked credentials, API keys, and tokens across your entire codebase
+                in milliseconds. Zero telemetry. Zero compromise.
+            </p>
+            <a href="#install" class="install-btn">
+                <span class="prompt">$</span>
+                cargo install velka
+                <span class="copy-hint">click to install</span>
+            </a>
+        </div>
+    </section>
 
-                <!-- Terminal Preview -->
-                <div class="glass rounded-2xl overflow-hidden border border-white/10 shadow-2xl">
-                    <div class="flex items-center gap-2 px-4 py-3 bg-black/50 border-b border-white/10">
-                        <div class="w-3 h-3 rounded-full bg-red-500"></div>
-                        <div class="w-3 h-3 rounded-full bg-yellow-500"></div>
-                        <div class="w-3 h-3 rounded-full bg-green-500"></div>
-                        <div class="ml-auto text-xs text-gray-600 font-mono">bash</div>
+    <!-- ===== BADGES ===== -->
+    <div class="badges">
+        <a href="https://github.com/wesllen-lima/velka/actions/workflows/ci.yml"><img src="https://github.com/wesllen-lima/velka/actions/workflows/ci.yml/badge.svg" alt="CI"></a>
+        <a href="https://crates.io/crates/velka"><img src="https://img.shields.io/crates/v/velka.svg" alt="crates.io"></a>
+        <a href="https://github.com/wesllen-lima/velka/blob/master/LICENSE-MIT"><img src="https://img.shields.io/badge/license-MIT%2FApache--2.0-blue.svg" alt="License"></a>
+        <a href="https://crates.io/crates/velka"><img src="https://img.shields.io/crates/d/velka.svg" alt="Downloads"></a>
+    </div>
+
+    <!-- ===== FEATURES ===== -->
+    <section id="features" class="section">
+        <div class="container">
+            <div class="features-heading">
+                <h2>Everything you need. Nothing you don't.</h2>
+                <p>One binary. Zero dependencies. Absolute privacy.</p>
+            </div>
+            <div class="features-grid">
+                <div class="feature-card red-accent animate-on-scroll">
+                    <span class="feature-icon">&#x1F6E1;&#xFE0F;</span>
+                    <h3>52+ Detection Rules</h3>
+                    <p>AWS, GCP, GitHub, Stripe, Slack, Twilio, SendGrid, private keys, JWTs, and many more. Compiled regex for maximum speed.</p>
+                </div>
+                <div class="feature-card green-accent animate-on-scroll">
+                    <span class="feature-icon">&#x1F512;</span>
+                    <h3>Zero Telemetry</h3>
+                    <p>Privacy first. No network calls, no analytics, no tracking. Your secrets stay on your machine. Always.</p>
+                </div>
+                <div class="feature-card yellow-accent animate-on-scroll">
+                    <span class="feature-icon">&#x26A1;</span>
+                    <h3>High Performance</h3>
+                    <p>Memory-mapped I/O, parallel file walking, compiled regex, lock-free channels. Thousands of files in milliseconds.</p>
+                </div>
+                <div class="feature-card blue-accent animate-on-scroll">
+                    <span class="feature-icon">&#x1F9E0;</span>
+                    <h3>ML Classifier</h3>
+                    <p>Ensemble scoring with Shannon entropy, character frequency analysis, and structural validation. No ML runtime needed.</p>
+                </div>
+                <div class="feature-card green-accent animate-on-scroll">
+                    <span class="feature-icon">&#x1F4BB;</span>
+                    <h3>LSP Server</h3>
+                    <p>Real-time secret detection in your editor. Works with VS Code, Neovim, Helix, Zed, and any LSP-compatible editor.</p>
+                </div>
+                <div class="feature-card red-accent animate-on-scroll">
+                    <span class="feature-icon">&#x2638;&#xFE0F;</span>
+                    <h3>K8s Admission Controller</h3>
+                    <p>Kubernetes ValidatingWebhook that blocks Pods with secrets in manifests before they reach the cluster.</p>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- ===== LIVE DEMO ===== -->
+    <section id="demo" class="section" style="background: linear-gradient(180deg, transparent, rgba(16,185,129,0.03), transparent);">
+        <div class="container">
+            <div class="features-heading">
+                <h2>See it in action</h2>
+                <p>A typical scan across a project with leaked secrets.</p>
+            </div>
+            <div class="terminal animate-on-scroll">
+                <div class="terminal-bar">
+                    <div class="terminal-dot red"></div>
+                    <div class="terminal-dot yellow"></div>
+                    <div class="terminal-dot green"></div>
+                    <span class="terminal-title">velka scan .</span>
+                </div>
+                <div class="terminal-body">
+                    <div class="prompt-line">$ <span class="cmd">velka scan . --deep-scan</span></div>
+                    <br>
+                    <div class="info">Scanning 2,847 files across 143 directories...</div>
+                    <br>
+                    <div class="finding">
+                        <span class="severity-mortal">MORTAL</span>
+                        <span class="file-loc">src/config.js:4</span>
+                        <span class="rule-name">AWS_ACCESS_KEY</span>
+                        <span class="confidence">conf: 92%</span>
                     </div>
-                    <div class="p-6 bg-black/80 font-mono text-sm space-y-2">
-                        <div class="text-gray-500">$ <span class="text-white">velka scan . --migrate-to-env --dry-run</span></div>
-                        <div class="text-green-500/80 text-xs mt-2">Found 3 secrets. Ready to migrate.</div>
-                        <div class="mt-4 text-gray-400">
-                            <div class="flex justify-between text-xs mb-2">
-                                <span>AWS_ACCESS_KEY</span>
-                                <span class="text-yellow-500">→ .env</span>
-                            </div>
-                            <div class="flex justify-between text-xs mb-2">
-                                <span>DATABASE_URL</span>
-                                <span class="text-yellow-500">→ .env</span>
-                            </div>
-                            <div class="flex justify-between text-xs">
-                                <span>STRIPE_SECRET</span>
-                                <span class="text-yellow-500">→ .env</span>
-                            </div>
-                        </div>
-                        <div class="mt-4 text-gray-600">$ <span class="cursor-blink inline-block w-2 h-4 bg-gray-600 align-middle"></span></div>
+                    <div class="finding">
+                        <span class="severity-mortal">MORTAL</span>
+                        <span class="file-loc">lib/auth.py:12</span>
+                        <span class="rule-name">GITHUB_TOKEN</span>
+                        <span class="confidence">conf: 88%</span>
+                    </div>
+                    <div class="finding">
+                        <span class="severity-mortal">MORTAL</span>
+                        <span class="file-loc">.env.prod:1</span>
+                        <span class="rule-name">STRIPE_SECRET_KEY</span>
+                        <span class="confidence">conf: 95%</span>
+                    </div>
+                    <div class="finding">
+                        <span class="severity-mortal">MORTAL</span>
+                        <span class="file-loc">deploy/k8s.yaml:23</span>
+                        <span class="rule-name">GCP_SERVICE_ACCOUNT</span>
+                        <span class="confidence">conf: 91%</span>
+                    </div>
+                    <div class="finding">
+                        <span class="severity-venial">VENIAL</span>
+                        <span class="file-loc">docker-compose.yml:8</span>
+                        <span class="rule-name">HARDCODED_IP</span>
+                        <span class="confidence">conf: 45%</span>
+                    </div>
+                    <div class="summary">
+                        <span class="mortal-count">4 mortal</span>
+                        <span class="sep">|</span>
+                        <span class="venial-count">1 venial</span>
+                        <span class="sep">|</span>
+                        <span>2,847 files in 18ms</span>
                     </div>
                 </div>
             </div>
         </div>
     </section>
 
-    <!-- SEÇÃO PRINCIPAL: THE REDEMPTION (Migração Automática) -->
-    <section id="redemption" class="py-32 relative overflow-hidden bg-gradient-to-b from-transparent via-red-950/10 to-transparent">
-        <div class="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8">
-            <div class="text-center mb-16">
-                <span class="text-red-500 font-mono text-sm tracking-wider uppercase mb-2 block">The Redemption</span>
-                <h2 class="text-4xl sm:text-5xl font-bold mb-6">Auto-Migration to .env</h2>
-                <p class="text-gray-400 max-w-2xl mx-auto text-lg">
-                    <code class="text-red-400 font-mono">--migrate-to-env</code> extrai automaticamente todos os secrets 
-                    do código, cria o .env e substitui por variáveis de ambiente.
-                </p>
+    <!-- ===== INSTALL ===== -->
+    <section id="install" class="section">
+        <div class="container">
+            <div class="features-heading">
+                <h2>Installation</h2>
+                <p>One command. No runtime dependencies.</p>
             </div>
-
-            <!-- Demo Interativa -->
-            <div class="grid lg:grid-cols-2 gap-8 relative">
-                
-                <!-- Before: Código com Secrets -->
-                <div class="relative" id="before-panel">
-                    <div class="absolute -top-4 left-4 px-4 py-1 bg-red-600 text-white text-xs font-bold rounded-full z-10">
-                        BEFORE (SINFUL)
-                    </div>
-                    
-                    <div class="glass rounded-2xl overflow-hidden border border-red-500/30 bg-black/40">
-                        <div class="flex items-center justify-between px-4 py-3 border-b border-white/5 bg-red-950/20">
-                            <span class="text-xs text-gray-500 font-mono">src/config.js</span>
-                            <span class="text-xs text-red-400 flex items-center gap-1">
-                                <span class="w-2 h-2 rounded-full bg-red-500 animate-pulse"></span>
-                                3 secrets exposed
-                            </span>
-                        </div>
-                        
-                        <div class="p-6 font-mono text-sm space-y-3" id="code-container">
-                            <!-- Linha 1: OK -->
-                            <div class="text-gray-400">
-                                <span class="text-purple-400">const</span> <span class="text-blue-400">config</span> = {
-                            </div>
-                            
-                            <!-- Linha 2: Secret (AWS) -->
-                            <div class="code-line relative pl-4" data-secret="aws">
-                                <span class="text-red-400">awsKey</span>: <span class="text-green-400 secret-value relative cursor-pointer hover:brightness-125 transition-all" onclick="highlightSecret(this)">"AKIAIOSFODNN7EXAMPLE"</span>,
-                                <div class="secret-pill absolute -right-20 top-0 px-3 py-1 rounded-full text-xs font-bold text-white opacity-0 transform scale-0">
-                                    MOVING →
-                                </div>
-                            </div>
-                            
-                            <!-- Linha 3: Secret (DB) -->
-                            <div class="code-line relative pl-4" data-secret="db">
-                                <span class="text-red-400">databaseUrl</span>: <span class="text-green-400 secret-value relative cursor-pointer hover:brightness-125 transition-all" onclick="highlightSecret(this)">"postgres://admin:secret123@localhost/db"</span>,
-                                <div class="secret-pill absolute -right-20 top-0 px-3 py-1 rounded-full text-xs font-bold text-white opacity-0 transform scale-0">
-                                    MOVING →
-                                </div>
-                            </div>
-                            
-                            <!-- Linha 4: Secret (Stripe) -->
-                            <div class="code-line relative pl-4" data-secret="stripe">
-                                <span class="text-red-400">stripeSecret</span>: <span class="text-green-400 secret-value relative cursor-pointer hover:brightness-125 transition-all" onclick="highlightSecret(this)">"sk_test_REDACTED_FOR_SECURITY"</span>,
-                                <div class="secret-pill absolute -right-20 top-0 px-3 py-1 rounded-full text-xs font-bold text-white opacity-0 transform scale-0">
-                                    MOVING →
-                                </div>
-                            </div>
-                            
-                            <!-- Linha 5: OK -->
-                            <div class="text-gray-400 pl-4">
-                                <span class="text-red-400">port</span>: <span class="text-orange-400">3000</span>,
-                            </div>
-                            
-                            <div class="text-gray-400">};</div>
-                        </div>
-                    </div>
-                    
-                    <!-- Botão de Trigger -->
-                    <div class="mt-6 flex justify-center">
-                        <button onclick="startMigration()" id="migrate-btn" class="group relative px-8 py-4 bg-red-600 hover:bg-red-700 text-white rounded-xl font-semibold transition-all overflow-hidden shadow-lg shadow-red-600/30 hover:shadow-red-600/50">
-                            <span class="relative z-10 flex items-center gap-2">
-                                <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 14l-7 7m0 0l-7-7m7 7V3"/>
-                                </svg>
-                                Executar Redenção
-                                <span class="text-xs opacity-70 font-mono ml-2">--migrate-to-env</span>
-                            </span>
-                            <div class="absolute inset-0 bg-gradient-to-r from-red-600 to-orange-600 translate-y-full group-hover:translate-y-0 transition-transform duration-300"></div>
-                        </button>
-                    </div>
+            <div class="install-grid">
+                <div class="install-card animate-on-scroll">
+                    <div class="label">Cargo (recommended)</div>
+                    <code>cargo install velka --locked</code>
                 </div>
-
-                <!-- Seta animada (desktop) -->
-                <div class="hidden lg:flex absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 z-20 pointer-events-none">
-                    <div class="w-16 h-16 rounded-full bg-red-600/20 flex items-center justify-center border border-red-500/50 animate-pulse" id="migration-arrow">
-                        <svg class="w-8 h-8 text-red-500 transform rotate-180" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8"/>
-                        </svg>
-                    </div>
+                <div class="install-card animate-on-scroll">
+                    <div class="label">Homebrew</div>
+                    <code>brew install velka</code>
+                    <div class="note">Coming soon</div>
                 </div>
-
-                <!-- After: Código Limpo + .env -->
-                <div class="relative" id="after-panel">
-                    <div class="absolute -top-4 left-4 px-4 py-1 bg-green-600 text-white text-xs font-bold rounded-full z-10">
-                        AFTER (REDEEMED)
-                    </div>
-
-                    <div class="space-y-4">
-                        <!-- Código Limpo -->
-                        <div class="glass rounded-2xl overflow-hidden border border-green-500/30 bg-black/40 opacity-50 transition-all duration-500" id="clean-code-panel">
-                            <div class="flex items-center justify-between px-4 py-3 border-b border-white/5 bg-green-950/20">
-                                <span class="text-xs text-gray-500 font-mono">src/config.js</span>
-                                <span class="text-xs text-green-400 flex items-center gap-1">
-                                    <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"/></svg>
-                                    Clean
-                                </span>
-                            </div>
-                            
-                            <div class="p-6 font-mono text-sm space-y-3">
-                                <div class="text-gray-400"><span class="text-purple-400">const</span> <span class="text-blue-400">config</span> = {</div>
-                                
-                                <div class="code-line added pl-4 opacity-0 transform translate-x-4 transition-all duration-500 delay-300">
-                                    <span class="text-green-400">awsKey</span>: <span class="text-yellow-400">process.env.AWS_ACCESS_KEY_ID</span>,
-                                </div>
-                                
-                                <div class="code-line added pl-4 opacity-0 transform translate-x-4 transition-all duration-500 delay-400">
-                                    <span class="text-green-400">databaseUrl</span>: <span class="text-yellow-400">process.env.DATABASE_URL</span>,
-                                </div>
-                                
-                                <div class="code-line added pl-4 opacity-0 transform translate-x-4 transition-all duration-500 delay-500">
-                                    <span class="text-green-400">stripeSecret</span>: <span class="text-yellow-400">process.env.STRIPE_SECRET_KEY</span>,
-                                </div>
-                                
-                                <div class="text-gray-400 pl-4">
-                                    <span class="text-red-400">port</span>: <span class="text-orange-400">3000</span>,
-                                </div>
-                                
-                                <div class="text-gray-400">};</div>
-                            </div>
-                        </div>
-
-                        <!-- Arquivo .env Gerado -->
-                        <div class="glass rounded-2xl overflow-hidden border border-yellow-500/30 bg-black/40 opacity-0 transform translate-y-4 transition-all duration-500 env-shimmer" id="env-panel">
-                            <div class="flex items-center justify-between px-4 py-3 border-b border-white/5 bg-yellow-950/20">
-                                <span class="text-xs text-gray-500 font-mono flex items-center gap-2">
-                                    <span class="text-yellow-500">🔒</span>
-                                    .env (chmod 600)
-                                </span>
-                                <span class="text-xs text-yellow-400">Auto-generated</span>
-                            </div>
-                            
-                            <div class="p-6 font-mono text-sm space-y-2">
-                                <div class="env-line opacity-0 transform translate-y-2 transition-all" style="transition-delay: 600ms">
-                                    <span class="text-gray-500"># Generated by Velka --migrate-to-env</span>
-                                </div>
-                                <div class="env-line opacity-0 transform translate-y-2 transition-all" style="transition-delay: 700ms">
-                                    <span class="text-yellow-400">AWS_ACCESS_KEY_ID</span>=<span class="text-green-400">AKIAIOSFODNN7EXAMPLE</span>
-                                </div>
-                                <div class="env-line opacity-0 transform translate-y-2 transition-all" style="transition-delay: 800ms">
-                                    <span class="text-yellow-400">DATABASE_URL</span>=<span class="text-green-400">postgres://admin:secret123@localhost/db</span>
-                                </div>
-                                <div class="env-line opacity-0 transform translate-y-2 transition-all" style="transition-delay: 900ms">
-                                    <span class="text-yellow-400">STRIPE_SECRET_KEY</span>=<span class="text-green-400">sk_test_REDACTED_FOR_SECURITY</span>
-                                </div>
-                            </div>
-
-                            <div class="px-4 py-2 bg-white/5 border-t border-white/5 flex items-center gap-2 text-xs text-gray-500">
-                                <svg class="w-4 h-4 text-green-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"/>
-                                </svg>
-                                <span>.env adicionado ao .gitignore automaticamente</span>
-                            </div>
-                        </div>
-                    </div>
-                </div>
-            </div>
-
-            <!-- Features da Migração -->
-            <div class="grid md:grid-cols-3 gap-6 mt-16">
-                <div class="glass rounded-xl p-6 border border-white/10 text-center group hover:border-green-500/50 transition-all">
-                    <div class="w-12 h-12 mx-auto mb-4 rounded-full bg-green-500/10 flex items-center justify-center text-2xl group-hover:scale-110 transition-transform">🛡️</div>
-                    <h3 class="font-bold text-white mb-2">Safe by Default</h3>
-                    <p class="text-sm text-gray-400">--dry-run preview. Nunca sobrescreve sem confirmação. Backup automático.</p>
-                </div>
-                
-                <div class="glass rounded-xl p-6 border border-white/10 text-center group hover:border-yellow-500/50 transition-all">
-                    <div class="w-12 h-12 mx-auto mb-4 rounded-full bg-yellow-500/10 flex items-center justify-center text-2xl group-hover:scale-110 transition-transform">🔐</div>
-                    <h3 class="font-bold text-white mb-2">Secure Permissions</h3>
-                    <p class="text-sm text-gray-400">.env criado com chmod 600. Verificação automática de .gitignore.</p>
-                </div>
-                
-                <div class="glass rounded-xl p-6 border border-white/10 text-center group hover:border-blue-500/50 transition-all">
-                    <div class="w-12 h-12 mx-auto mb-4 rounded-full bg-blue-500/10 flex items-center justify-center text-2xl group-hover:scale-110 transition-transform">📝</div>
-                    <h3 class="font-bold text-white mb-2">Smart Replace</h3>
-                    <p class="text-sm text-gray-400">Substitui todas as ocorrências no código. Suporta JS, Python, Ruby, Go, etc.</p>
+                <div class="install-card animate-on-scroll">
+                    <div class="label">Binary (GitHub Releases)</div>
+                    <code>gh release download --repo wesllen-lima/velka</code>
+                    <div class="note">Linux, macOS, Windows</div>
                 </div>
             </div>
         </div>
     </section>
 
-    <!-- Performance Section -->
-    <section id="performance" class="py-32">
-        <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-            <div class="grid lg:grid-cols-2 gap-16 items-center">
-                <div>
-                    <h2 class="text-4xl sm:text-5xl font-bold mb-6 leading-tight">
-                        Performance que <br>
-                        <span class="text-gradient">desafia a física</span>
-                    </h2>
-                    <p class="text-gray-400 text-lg leading-relaxed">
-                        Memory-mapped I/O, regex compiladas via LazyLock, canais lock-free com crossbeam. 
-                        10.000 arquivos em ~21ms.
-                    </p>
+    <!-- ===== BENCHMARKS ===== -->
+    <section id="benchmarks" class="section" style="background: linear-gradient(180deg, transparent, rgba(220,38,38,0.03), transparent);">
+        <div class="container">
+            <div class="features-heading">
+                <h2>By the numbers</h2>
+                <p>Built for speed, accuracy, and privacy.</p>
+            </div>
+            <div class="bench-grid">
+                <div class="bench-card animate-on-scroll">
+                    <div class="bench-value green">52+</div>
+                    <div class="bench-label">Detection Rules</div>
                 </div>
-
-                <div class="space-y-4">
-                    <div class="p-4 rounded-xl bg-white/5 border border-white/10 flex justify-between items-center">
-                        <span class="font-mono text-gray-400">10.000 arquivos</span>
-                        <span class="text-2xl font-bold text-red-500 font-mono">~21 ms</span>
-                    </div>
-                    <div class="p-4 rounded-xl bg-white/5 border border-white/10 flex justify-between items-center">
-                        <span class="font-mono text-gray-400">5.000 arquivos</span>
-                        <span class="text-2xl font-bold text-yellow-500 font-mono">~12 ms</span>
-                    </div>
+                <div class="bench-card animate-on-scroll">
+                    <div class="bench-value blue">150+</div>
+                    <div class="bench-label">Tests</div>
+                </div>
+                <div class="bench-card animate-on-scroll">
+                    <div class="bench-value yellow">&lt;100ms</div>
+                    <div class="bench-label">Typical Scan</div>
+                </div>
+                <div class="bench-card animate-on-scroll">
+                    <div class="bench-value red">0</div>
+                    <div class="bench-label">Network Calls</div>
                 </div>
             </div>
         </div>
     </section>
 
-    <!-- Install -->
-    <section id="install" class="py-32 bg-white/5">
-        <div class="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8">
-            <div class="text-center mb-12">
-                <h2 class="text-4xl font-bold mb-4">Installation</h2>
-                <p class="text-gray-400">Escolha sua forma de invocação.</p>
+    <!-- ===== FOOTER ===== -->
+    <footer class="footer">
+        <div class="container footer-inner">
+            <div class="footer-left">
+                <span>Velka &mdash; MIT / Apache-2.0</span>
             </div>
-
-            <div class="glass rounded-2xl p-8 border border-white/10 text-center">
-                <code class="block font-mono text-lg text-green-400 mb-4">cargo install velka --locked</code>
-                <p class="text-sm text-gray-500">Ou via Docker, source, ou como crate Rust.</p>
+            <div class="footer-links">
+                <a href="https://github.com/wesllen-lima/velka">GitHub</a>
+                <a href="https://crates.io/crates/velka">crates.io</a>
+                <a href="https://docs.rs/velka">docs.rs</a>
+            </div>
+            <div class="footer-rust">
+                Built with Rust &#x1F980;
             </div>
         </div>
-    </section>
+    </footer>
 
+    <!-- ===== MINIMAL JS: Scroll animation observer only ===== -->
     <script>
-        // GSAP Init
-        gsap.registerPlugin(ScrollTrigger);
-
-        // Header scroll effect
-        window.addEventListener('scroll', () => {
-            const header = document.getElementById('header');
-            if (window.scrollY > 50) {
-                header.classList.add('glass');
-            } else {
-                header.classList.remove('glass');
-            }
-        }, { passive: true });
-
-        // Função de Migração Interativa
-        function startMigration() {
-            const btn = document.getElementById('migrate-btn');
-            const arrow = document.getElementById('migration-arrow');
-            const cleanPanel = document.getElementById('clean-code-panel');
-            const envPanel = document.getElementById('env-panel');
-            
-            // Desabilita botão
-            btn.disabled = true;
-            btn.innerHTML = '<span class="animate-pulse">Migrando...</span>';
-            
-            // Anima seta
-            gsap.to(arrow, {
-                scale: 1.5,
-                opacity: 0.5,
-                duration: 0.5,
-                yoyo: true,
-                repeat: 3
-            });
-
-            // Para cada secret...
-            const secrets = ['aws', 'db', 'stripe'];
-            
-            secrets.forEach((secret, index) => {
-                setTimeout(() => {
-                    const line = document.querySelector(`[data-secret="${secret}"]`);
-                    const pill = line.querySelector('.secret-pill');
-                    const value = line.querySelector('.secret-value');
-                    
-                    // 1. Mostrar pill vermelho
-                    gsap.to(pill, { opacity: 1, scale: 1, duration: 0.3 });
-                    
-                    // 2. Calcular posição para animar até o .env
-                    const envPanelRect = envPanel.getBoundingClientRect();
-                    const pillRect = pill.getBoundingClientRect();
-                    
-                    const deltaX = envPanelRect.left - pillRect.left + 50;
-                    const deltaY = envPanelRect.top - pillRect.top + 20 + (index * 30);
-                    
-                    pill.style.setProperty('--target-x', `${deltaX}px`);
-                    pill.style.setProperty('--target-y', `${deltaY}px`);
-                    
-                    // 3. Animar migração
-                    setTimeout(() => {
-                        pill.classList.add('migrating');
-                        pill.textContent = 'MOVED ✓';
-                        pill.classList.add('migrated');
-                        
-                        // 4. Riscar código antigo
-                        line.classList.add('removed');
-                        value.classList.add('line-through', 'opacity-50');
-                        
-                    }, 500);
-                    
-                }, index * 800);
-            });
-
-            // Mostrar resultado final após todas as migrações
-            setTimeout(() => {
-                // Limpa painel direito
-                cleanPanel.classList.remove('opacity-50');
-                cleanPanel.classList.add('opacity-100');
-                
-                // Mostra linhas novas
-                document.querySelectorAll('.code-line.added').forEach(line => {
-                    line.classList.remove('opacity-0', 'translate-x-4');
+        (function() {
+            var observer = new IntersectionObserver(function(entries) {
+                entries.forEach(function(entry) {
+                    if (entry.isIntersecting) {
+                        entry.target.classList.add('visible');
+                    }
                 });
-                
-                // Mostra .env
-                envPanel.classList.remove('opacity-0', 'translate-y-4');
-                
-                // Mostra linhas do .env
-                document.querySelectorAll('.env-line').forEach((line, i) => {
-                    setTimeout(() => {
-                        line.classList.remove('opacity-0', 'translate-y-2');
-                    }, i * 100);
-                });
-                
-                // Atualiza botão
-                btn.innerHTML = `
-                    <span class="flex items-center gap-2">
-                        <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"/></svg>
-                        Redenção Completa
-                    </span>
-                `;
-                btn.classList.remove('bg-red-600', 'hover:bg-red-700');
-                btn.classList.add('bg-green-600', 'hover:bg-green-700');
-                
-            }, secrets.length * 800 + 500);
-        }
+            }, { threshold: 0.1 });
 
-        // Highlight individual secret
-        function highlightSecret(el) {
-            gsap.to(el, {
-                scale: 1.05,
-                duration: 0.2,
-                yoyo: true,
-                repeat: 1
+            document.querySelectorAll('.animate-on-scroll').forEach(function(el) {
+                observer.observe(el);
             });
-        }
-
-        // Scroll animations
-        gsap.utils.toArray('.glass').forEach((el, i) => {
-            gsap.from(el, {
-                scrollTrigger: {
-                    trigger: el,
-                    start: 'top 85%',
-                },
-                opacity: 0,
-                y: 30,
-                duration: 0.8,
-                delay: i * 0.1
-            });
-        });
+        })();
     </script>
 </body>
 </html>
