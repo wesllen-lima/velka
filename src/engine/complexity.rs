@@ -177,3 +177,83 @@ pub fn analyze_complexity(path: &Path, sender: &Sender<Sin>) -> Result<()> {
 
     Ok(())
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_count_leading_spaces() {
+        assert_eq!(count_leading_spaces("hello"), 0);
+        assert_eq!(count_leading_spaces("    hello"), 4);
+        assert_eq!(count_leading_spaces("\thello"), 4);
+        assert_eq!(count_leading_spaces("  \thello"), 6);
+    }
+
+    #[test]
+    fn test_is_function_start() {
+        assert!(is_function_start("fn main() {"));
+        assert!(is_function_start("pub fn foo() {"));
+        assert!(is_function_start("async fn bar() {"));
+        assert!(is_function_start("def my_func():"));
+        assert!(is_function_start("function doStuff() {"));
+        assert!(is_function_start("func Handler() {"));
+        assert!(!is_function_start("let x = 42;"));
+        assert!(!is_function_start("// fn comment"));
+    }
+
+    #[test]
+    fn test_count_complexity_keywords() {
+        assert_eq!(count_complexity_keywords("if x > 0 {"), 1);
+        assert_eq!(count_complexity_keywords("} else if y < 0 {"), 2); // " if " + " else if "
+        assert_eq!(count_complexity_keywords("for item in items {"), 1);
+        assert_eq!(count_complexity_keywords("while running {"), 1);
+        assert_eq!(count_complexity_keywords("match result {"), 1);
+        assert_eq!(count_complexity_keywords("if a && b || c {"), 2); // if + &&/||
+        assert_eq!(count_complexity_keywords("let x = 42;"), 0);
+    }
+
+    #[test]
+    fn test_analyze_complexity_detects_complex_function() {
+        let tmp = tempfile::TempDir::new().unwrap();
+        let path = tmp.path().join("complex.rs");
+        // Build a function with complexity > 15
+        let mut code = String::from("fn complex_function() {\n");
+        for i in 0..20 {
+            code.push_str(&format!("    if x_{} > 0 {{\n", i));
+            code.push_str(&format!("        for j in 0..{} {{\n", i));
+            code.push_str("            println!(\"nested\");\n");
+            code.push_str("        }\n");
+            code.push_str("    }\n");
+        }
+        code.push_str("}\n");
+        std::fs::write(&path, &code).unwrap();
+
+        let (sender, receiver) = crossbeam_channel::unbounded();
+        analyze_complexity(tmp.path(), &sender).unwrap();
+        drop(sender);
+        let sins: Vec<Sin> = receiver.iter().collect();
+        assert!(!sins.is_empty(), "Should detect complex function");
+        assert!(sins.iter().all(|s| s.rule_id == "COMPLEXITY_SIN"));
+    }
+
+    #[test]
+    fn test_analyze_complexity_simple_function_clean() {
+        let tmp = tempfile::TempDir::new().unwrap();
+        let path = tmp.path().join("simple.rs");
+        std::fs::write(
+            &path,
+            "fn simple() {\n    let x = 1;\n    println!(\"{}\", x);\n}\n",
+        )
+        .unwrap();
+
+        let (sender, receiver) = crossbeam_channel::unbounded();
+        analyze_complexity(tmp.path(), &sender).unwrap();
+        drop(sender);
+        let sins: Vec<Sin> = receiver.iter().collect();
+        assert!(
+            sins.is_empty(),
+            "Simple function should not trigger complexity sin"
+        );
+    }
+}

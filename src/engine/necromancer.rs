@@ -4,7 +4,8 @@ use std::sync::Arc;
 
 use crate::error::Result;
 use crossbeam_channel::Sender;
-use git2::{DiffOptions, Repository};
+use git2::{DiffOptions, Oid, Repository};
+use rayon::prelude::*;
 
 use crate::config::VelkaConfig;
 use crate::domain::Sin;
@@ -24,12 +25,15 @@ pub fn scan_history(repo_path: &Path, config: &VelkaConfig, sender: &Sender<Sin>
     let disabled_rules: Arc<Vec<String>> = Arc::new(config.rules.disable.clone());
     let whitelist: Arc<Vec<String>> = Arc::new(config.scan.whitelist.clone());
 
-    for commit_id in revwalk {
-        let oid = commit_id?;
+    let commit_oids: Vec<Oid> = revwalk.filter_map(std::result::Result::ok).collect();
+    let repo_path_arc = Arc::new(repo_path.to_path_buf());
+
+    commit_oids.par_iter().try_for_each(|&oid| -> Result<()> {
+        let repo = Repository::open(repo_path_arc.as_path())?;
         let commit = repo.find_commit(oid)?;
 
         if commit.parent_count() == 0 {
-            continue;
+            return Ok(());
         }
 
         let parent = commit.parent(0)?;
@@ -148,7 +152,8 @@ pub fn scan_history(repo_path: &Path, config: &VelkaConfig, sender: &Sender<Sin>
                 true
             }),
         )?;
-    }
+        Ok(())
+    })?;
 
     Ok(())
 }

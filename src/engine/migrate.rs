@@ -6,6 +6,7 @@ use std::path::{Path, PathBuf};
 use crate::engine::RULES;
 use crate::error::{Result, VelkaError};
 use crate::output::{env_var_for_rule, suggest_remediation};
+use tempfile::NamedTempFile;
 
 #[derive(Debug, Clone, Default)]
 pub struct MigrateReport {
@@ -73,6 +74,30 @@ fn set_file_mode_0600(path: &Path) -> Result<()> {
     let mut perms = fs::metadata(path)?.permissions();
     perms.set_mode(0o600);
     fs::set_permissions(path, perms)?;
+    Ok(())
+}
+
+fn create_backup(path: &Path) -> Result<PathBuf> {
+    if !path.exists() {
+        return Ok(PathBuf::new());
+    }
+    let timestamp = chrono::Utc::now().format("%Y%m%d_%H%M%S");
+    let backup_path = path.with_extension(format!("backup.{timestamp}"));
+    fs::copy(path, &backup_path)?;
+    Ok(backup_path)
+}
+
+fn atomic_write_file(path: &Path, content: &str) -> Result<()> {
+    let parent = path
+        .parent()
+        .ok_or_else(|| VelkaError::InvalidPath("file has no parent directory".to_string()))?;
+    let mut temp = NamedTempFile::new_in(parent)?;
+    temp.write_all(content.as_bytes())?;
+    temp.flush()?;
+    temp.as_file().sync_all()?;
+    temp.persist(path).map_err(|e| {
+        VelkaError::Io(std::io::Error::other(format!("atomic persist failed: {e}")))
+    })?;
     Ok(())
 }
 
@@ -205,7 +230,7 @@ pub fn run_migrate(
             .open(&env_path_for_check)?;
         for (key, value) in &to_append {
             let escaped = escape_env_value(value);
-            let _ = writeln!(f, "{key}={escaped}");
+            writeln!(f, "{key}={escaped}")?;
         }
         f.sync_all()?;
         drop(f);
@@ -232,7 +257,16 @@ pub fn run_migrate(
         }
         let new_content = lines.join(line_ending);
         if new_content != content {
-            fs::write(&full_path, new_content)?;
+            let backup_path = create_backup(&full_path)?;
+            if let Err(e) = atomic_write_file(&full_path, &new_content) {
+                if !backup_path.as_os_str().is_empty() {
+                    let _ = fs::copy(&backup_path, &full_path);
+                }
+                return Err(e);
+            }
+            if !backup_path.as_os_str().is_empty() {
+                let _ = fs::remove_file(backup_path);
+            }
             report
                 .files_updated
                 .push(file_path.to_string_lossy().to_string());
