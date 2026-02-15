@@ -5,6 +5,29 @@ All notable changes to Velka will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Added
+- **K8s Admission Controller**: `velka k8s webhook` starts a ValidatingWebhook server (axum + TLS) that blocks Pods with secrets in manifests
+- **K8s Manifest Scan**: `velka k8s scan <file>` scans local YAML manifests for secrets
+- **Runtime Log Scanner**: `velka runtime [sources...] [--follow]` monitors container logs (stdin or file) for leaked secrets in real-time
+- **Distributed Scanning**: `src/engine/dist.rs` with `ScanOrchestrator` (round-robin job distribution) and HTTP worker nodes
+- **GitHub Action (Official)**: `.github/actions/velka-scan/action.yml` composite action with auto-install, SARIF support, diff-only mode
+- **Shell Completions**: `velka completions <shell>` generates autocompletion scripts for Bash, Zsh, Fish, Elvish, PowerShell
+- **Architecture Docs**: `docs/architecture.md` with full Ensemble Scoring explanation, rule plugin system, and module map
+
+### Changed
+- **Dependencies**: Added `axum`, `hyper-util`, `tokio-rustls`, `rustls`, `rustls-pemfile`, `tokio-util`, `tokio-stream`, `bytes`, `clap_complete`
+- **Tokio features**: Added `fs`, `process`, `time` features
+- **`.gitignore`**: Extended with K8s TLS certs, LSP debug logs, bincode caches, quarantine dirs
+
+### Improved (Diamond Polish)
+- **Code Quality**: Zero clippy warnings with `-D warnings`; all pedantic lints resolved
+- **Unwrap Audit**: Eliminated all `unwrap()` in production code; static regexes use `LazyLock`
+- **Project Structure**: Extracted `src/cli/` module (scan, rotate, hooks, init) from `main.rs` (1271 -> 387 lines); added `src/presets.rs`
+- **Landing Page**: Rewrote `docs/index.html` — dark theme, CSS Grid, no external JS dependencies, responsive mobile-first design
+- **CI/CD Pipeline**: Added parallel gate jobs (audit, lint, test) before build-release; `swatinem/rust-cache@v2` on all jobs; `cargo audit` + `cargo clippy -- -D warnings` + `cargo fmt --check` as gates
+
 ## [1.2.0] - 2026-01-29
 
 ### Added
