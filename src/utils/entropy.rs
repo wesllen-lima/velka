@@ -1,3 +1,5 @@
+/// Shannon entropy in bits per byte. Returns 0.0 for empty strings.
+/// Typical values: low (<2.0) for natural text, high (>4.5) for random/secret-like strings.
 #[must_use]
 pub fn calculate_entropy(s: &str) -> f32 {
     let len = s.len();

@@ -60,6 +60,81 @@ pub fn get_staged_files(repo_path: &Path) -> Result<Vec<PathBuf>> {
     Ok(files)
 }
 
+pub fn get_changed_files_since(repo_path: &Path, since_ref: &str) -> Result<Vec<PathBuf>> {
+    let repo = Repository::open(repo_path)?;
+
+    let since_obj = repo
+        .revparse_single(since_ref)
+        .map_err(|e| git2::Error::from_str(&format!("Cannot resolve '{since_ref}': {e}")))?;
+    let since_tree = since_obj
+        .peel_to_commit()
+        .map_err(|e| git2::Error::from_str(&format!("'{since_ref}' is not a commit: {e}")))?
+        .tree()?;
+
+    let head_tree = repo.head()?.peel_to_tree()?;
+
+    let mut diff_opts = DiffOptions::new();
+    let diff = repo.diff_tree_to_tree(Some(&since_tree), Some(&head_tree), Some(&mut diff_opts))?;
+
+    let mut files = Vec::new();
+    diff.foreach(
+        &mut |delta, _| {
+            if let Some(path) = delta.new_file().path() {
+                let full = repo_path.join(path);
+                if full.exists() {
+                    files.push(full);
+                }
+            }
+            true
+        },
+        None,
+        None,
+        None,
+    )?;
+
+    Ok(files)
+}
+
+pub fn get_diff_line_ranges_since(
+    repo_path: &Path,
+    since_ref: &str,
+) -> Result<std::collections::HashMap<PathBuf, Vec<(usize, usize)>>> {
+    let repo = Repository::open(repo_path)?;
+
+    let since_obj = repo
+        .revparse_single(since_ref)
+        .map_err(|e| git2::Error::from_str(&format!("Cannot resolve '{since_ref}': {e}")))?;
+    let since_tree = since_obj
+        .peel_to_commit()
+        .map_err(|e| git2::Error::from_str(&format!("'{since_ref}' is not a commit: {e}")))?
+        .tree()?;
+
+    let head_tree = repo.head()?.peel_to_tree()?;
+
+    let mut diff_opts = DiffOptions::new();
+    let diff = repo.diff_tree_to_tree(Some(&since_tree), Some(&head_tree), Some(&mut diff_opts))?;
+
+    let mut ranges: std::collections::HashMap<PathBuf, Vec<(usize, usize)>> =
+        std::collections::HashMap::new();
+
+    diff.foreach(
+        &mut |_, _| true,
+        None,
+        Some(&mut |delta, hunk| {
+            if let Some(path) = delta.new_file().path() {
+                let full = repo_path.join(path);
+                let start = hunk.new_start() as usize;
+                let end = start + hunk.new_lines() as usize;
+                ranges.entry(full).or_default().push((start, end));
+            }
+            true
+        }),
+        None,
+    )?;
+
+    Ok(ranges)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
