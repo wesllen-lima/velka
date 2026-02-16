@@ -225,6 +225,23 @@ fn render_detail_panel(f: &mut Frame, area: Rect, app: &App) {
         ]));
     }
 
+    if let Some(level) = sin.confidence_level {
+        let (label, color) = match level {
+            crate::domain::ConfidenceLevel::Critical => ("CRITICAL", Color::Red),
+            crate::domain::ConfidenceLevel::Suspicious => ("SUSPICIOUS", Color::Yellow),
+            crate::domain::ConfidenceLevel::Info => ("INFO", Color::Blue),
+        };
+        lines.push(Line::from(vec![
+            Span::styled("Level:    ", Style::default().fg(Color::Cyan)),
+            Span::styled(
+                label,
+                Style::default()
+                    .fg(color)
+                    .add_modifier(ratatui::style::Modifier::BOLD),
+            ),
+        ]));
+    }
+
     if let Some(ref hash) = sin.commit_hash {
         lines.push(Line::from(vec![
             Span::styled("Commit:   ", Style::default().fg(Color::Cyan)),
@@ -304,7 +321,7 @@ fn render_entropy_panel(f: &mut Frame, area: Rect, app: &App) {
                 Color::Green
             };
             Bar::default()
-                .label(label)
+                .label(Line::from(label))
                 .value(value)
                 .style(Style::default().fg(color))
         })

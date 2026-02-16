@@ -15,6 +15,7 @@ use crate::engine::cache::{CacheEntry, CachedMatch, ScanCache};
 use crate::engine::file_reader::{is_binary, read_file_content};
 use crate::engine::honeytoken;
 use crate::engine::rules::CompiledCustomRule;
+use crate::engine::semantic;
 use crate::engine::verifier::{self, compute_confidence, enhance_confidence_with_context};
 use crate::utils::build_context;
 use chrono::Utc;
@@ -116,8 +117,37 @@ fn scan_file_text(
         ) {
             enhance_confidence_with_context(&mut sin, &lines, line_idx);
             file_sins.push(sin);
+        } else if let Some(mut sin) = semantic::analyze_semantic(
+            line,
+            path_str,
+            line_num,
+            line_context,
+            commit_hash.cloned(),
+            &scan_cfg,
+        ) {
+            enhance_confidence_with_context(&mut sin, &lines, line_idx);
+            file_sins.push(sin);
+        } else if let Some(sin) =
+            semantic::analyze_variable_names(line, path_str, line_num, line_context)
+        {
+            file_sins.push(sin);
         }
     }
+
+    // File-level concatenation analysis
+    let concat_sins = semantic::analyze_concatenation(
+        &lines,
+        path_str,
+        &AnalyzeLineConfig {
+            entropy_threshold: params.entropy_threshold,
+            disabled_rules: params.disabled_rules,
+            whitelist: params.whitelist,
+            custom_rules: params.custom_rules,
+            skip_entropy_in_regex_context: params.skip_entropy_in_regex_context,
+            allowlist_regexes: params.allowlist_regexes.as_ref().map(|v| v.as_slice()),
+        },
+    );
+    file_sins.extend(concat_sins);
 
     file_sins
 }
@@ -141,7 +171,11 @@ pub fn scan_content(content: &str, config: &VelkaConfig) -> Result<Vec<Sin>> {
     };
     let path_str = "<stdin>";
     let dummy_path = Path::new("<stdin>");
-    Ok(scan_file_text(dummy_path, path_str, content, &params, None))
+    let mut sins = scan_file_text(dummy_path, path_str, content, &params, None);
+    for sin in &mut sins {
+        compute_confidence(sin);
+    }
+    Ok(sins)
 }
 
 pub fn investigate(path: &Path, config: &VelkaConfig, sender: &Sender<Sin>) -> Result<()> {
@@ -218,6 +252,7 @@ pub fn scan_single_file(
                         verified: None,
                         confidence: None,
                         confidence_factors: None,
+                        confidence_level: None,
                     };
 
                     if sender.send(sin).is_err() {
@@ -454,6 +489,7 @@ pub fn investigate_with_progress(
                                 verified: None,
                                 confidence: None,
                                 confidence_factors: None,
+                                confidence_level: None,
                             };
 
                             if tx.send(sin).is_err() {

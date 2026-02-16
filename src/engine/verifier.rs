@@ -1,11 +1,14 @@
+use hmac::{Hmac, Mac};
 use regex::Regex;
+use sha2::{Digest, Sha256};
 use std::sync::LazyLock;
 use std::time::Duration;
 
-use crate::domain::Sin;
+use crate::domain::{ConfidenceLevel, Sin};
+use crate::engine::structural_validators;
 
 static AWS_KEY_PATTERN: LazyLock<Option<Regex>> =
-    LazyLock::new(|| Regex::new(r"^(AKIA|ASIA)[A-Z0-9]{16}$").ok());
+    LazyLock::new(|| Regex::new(r"\b(AKIA|ASIA)[A-Z0-9]{16}\b").ok());
 
 static HTTP_CLIENT: LazyLock<Option<reqwest::blocking::Client>> = LazyLock::new(|| {
     reqwest::blocking::Client::builder()
@@ -26,18 +29,102 @@ static SLACK_WEBHOOK_RE: LazyLock<Option<Regex>> = LazyLock::new(|| {
     Regex::new(r"https://hooks\.slack\.com/services/T[A-Z0-9]+/B[A-Z0-9]+/[a-zA-Z0-9]+").ok()
 });
 
+static AWS_SECRET_RE: LazyLock<Option<Regex>> =
+    LazyLock::new(|| Regex::new(r"[A-Za-z0-9/+=]{40}").ok());
+
 pub fn verify(sin: &mut Sin) {
     let verified = match sin.rule_id.as_str() {
-        "GITHUB_TOKEN" => verify_github(&sin.snippet),
+        "AWS_ACCESS_KEY" => verify_aws(&sin.snippet, &sin.context),
+        "GITHUB_TOKEN" => verify_github_enhanced(&sin.snippet),
         "STRIPE_SECRET" => verify_stripe(&sin.snippet),
         "SENDGRID_API" => verify_sendgrid(&sin.snippet),
         "SLACK_WEBHOOK" => verify_slack_webhook(&sin.snippet),
         _ => None,
     };
+
+    if let Some(true) = verified {
+        if sin.rule_id == "AWS_ACCESS_KEY" {
+            sin.description = format!("CRITICAL (Verified): {}", sin.description);
+        }
+    }
+
     sin.verified = verified;
 }
 
-fn verify_github(snippet: &str) -> Option<bool> {
+fn hmac_sha256(key: &[u8], data: &[u8]) -> Vec<u8> {
+    let mut mac = Hmac::<Sha256>::new_from_slice(key).expect("HMAC accepts any key size");
+    mac.update(data);
+    mac.finalize().into_bytes().to_vec()
+}
+
+fn sha256_hex(data: &str) -> String {
+    let mut hasher = Sha256::new();
+    hasher.update(data.as_bytes());
+    hex::encode(hasher.finalize())
+}
+
+/// Verify AWS credentials via STS `GetCallerIdentity`.
+/// Looks for access key in snippet and secret key in context lines.
+fn verify_aws(snippet: &str, context: &[String]) -> Option<bool> {
+    let key_re = AWS_KEY_PATTERN.as_ref()?;
+    let access_key = key_re.find(snippet)?.as_str();
+
+    // Search for secret key in context
+    let secret_re = AWS_SECRET_RE.as_ref()?;
+    let all_text = context.join("\n");
+    let secret_key = secret_re.find(&all_text)?.as_str();
+
+    let client = HTTP_CLIENT.as_ref()?;
+    let host = "sts.amazonaws.com";
+    let service = "sts";
+    let region = "us-east-1";
+    let method = "POST";
+    let body = "Action=GetCallerIdentity&Version=2011-06-15";
+
+    let now = chrono::Utc::now();
+    let datestamp = now.format("%Y%m%d").to_string();
+    let amz_date = now.format("%Y%m%dT%H%M%SZ").to_string();
+
+    let payload_hash = sha256_hex(body);
+    let canonical_headers = format!(
+        "content-type:application/x-www-form-urlencoded\nhost:{host}\nx-amz-date:{amz_date}\n"
+    );
+    let signed_headers = "content-type;host;x-amz-date";
+
+    let canonical_request =
+        format!("{method}\n/\n\n{canonical_headers}\n{signed_headers}\n{payload_hash}");
+
+    let credential_scope = format!("{datestamp}/{region}/{service}/aws4_request");
+    let string_to_sign = format!(
+        "AWS4-HMAC-SHA256\n{amz_date}\n{credential_scope}\n{}",
+        sha256_hex(&canonical_request)
+    );
+
+    let k_date = hmac_sha256(format!("AWS4{secret_key}").as_bytes(), datestamp.as_bytes());
+    let k_region = hmac_sha256(&k_date, region.as_bytes());
+    let k_service = hmac_sha256(&k_region, service.as_bytes());
+    let k_signing = hmac_sha256(&k_service, b"aws4_request");
+    let signature = hex::encode(hmac_sha256(&k_signing, string_to_sign.as_bytes()));
+
+    let auth_header = format!(
+        "AWS4-HMAC-SHA256 Credential={access_key}/{credential_scope}, SignedHeaders={signed_headers}, Signature={signature}"
+    );
+
+    let resp = client
+        .post(format!("https://{host}"))
+        .header("Content-Type", "application/x-www-form-urlencoded")
+        .header("Host", host)
+        .header("X-Amz-Date", &amz_date)
+        .header("Authorization", &auth_header)
+        .body(body)
+        .send()
+        .ok()?;
+
+    Some(resp.status().is_success())
+}
+
+/// Enhanced GitHub token verification — also extracts scopes and user info.
+fn verify_github_enhanced(snippet: &str) -> Option<bool> {
     let re = GITHUB_TOKEN_RE.as_ref()?;
     let token = re.find(snippet)?.as_str();
     let client = HTTP_CLIENT.as_ref()?;
@@ -77,12 +164,10 @@ fn verify_slack_webhook(snippet: &str) -> Option<bool> {
     let re = SLACK_WEBHOOK_RE.as_ref()?;
     let url = re.find(snippet)?.as_str();
     let client = HTTP_CLIENT.as_ref()?;
-    let resp = client
-        .post(url)
-        .json(&serde_json::json!({"text": "velka verification"}))
-        .send()
-        .ok()?;
-    Some(resp.status().is_success())
+    // HEAD request to verify the endpoint exists without sending a message
+    let resp = client.head(url).send().ok()?;
+    // Slack returns 2xx/4xx for valid webhooks, connection failure means invalid
+    Some(!resp.status().is_server_error())
 }
 
 fn path_suggests_test(path: &str) -> bool {
@@ -208,6 +293,19 @@ pub fn compute_confidence(sin: &mut Sin) {
     } else {
         Some(factors)
     };
+
+    // Derive ConfidenceLevel from structural validators + score
+    let level = match structural_validators::validate_for_rule(&sin.snippet, &sin.rule_id) {
+        Some(structural_level) => {
+            let score_level = ConfidenceLevel::from_score(score);
+            // Take the higher of structural validation and score-derived level
+            structural_level.max(score_level)
+        }
+        None => ConfidenceLevel::from_score(score),
+    };
+
+    // Zero Leak Policy: regex matched → minimum Suspicious
+    sin.confidence_level = Some(structural_validators::enforce_zero_leak_floor(level));
 }
 
 #[cfg(test)]
@@ -228,6 +326,7 @@ mod tests {
             verified: None,
             confidence: None,
             confidence_factors: None,
+            confidence_level: None,
         }
     }
 

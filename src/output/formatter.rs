@@ -64,6 +64,8 @@ struct RedactedSin {
     confidence: Option<f32>,
     #[serde(skip_serializing_if = "Option::is_none")]
     confidence_factors: Option<Vec<String>>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    confidence_level: Option<crate::domain::ConfidenceLevel>,
 }
 
 #[derive(Serialize)]
@@ -283,6 +285,7 @@ fn format_json(sins: Vec<Sin>, redaction: &RedactionConfig) -> String {
                 verified: sin.verified,
                 confidence: sin.confidence,
                 confidence_factors: sin.confidence_factors,
+                confidence_level: sin.confidence_level,
             }
         })
         .collect();
@@ -777,6 +780,7 @@ mod tests {
             verified: None,
             confidence: None,
             confidence_factors: None,
+            confidence_level: None,
         }
     }
 

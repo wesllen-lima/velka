@@ -35,6 +35,10 @@ impl VelkaLspBackend {
             use std::fmt::Write;
             let _ = write!(message, " (confidence: {:.0}%)", confidence * 100.0);
         }
+        if let Some(level) = sin.confidence_level {
+            use std::fmt::Write;
+            let _ = write!(message, " [{level}]");
+        }
 
         Diagnostic {
             range: Range {

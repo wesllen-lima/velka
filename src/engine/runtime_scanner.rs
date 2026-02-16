@@ -62,6 +62,7 @@ pub async fn scan_stream<R: tokio::io::AsyncRead + Unpin + Send + 'static>(
                     verified: None,
                     confidence: None,
                     confidence_factors: None,
+                    confidence_level: None,
                 };
 
                 let alert = RuntimeAlert {
@@ -136,6 +137,7 @@ pub async fn tail_and_scan(
                     verified: None,
                     confidence: None,
                     confidence_factors: None,
+                    confidence_level: None,
                 };
 
                 let alert = RuntimeAlert {

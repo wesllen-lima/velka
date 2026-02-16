@@ -253,6 +253,20 @@ pub fn analyze_line(
                 continue;
             }
 
+            if rule.id == "BRAZILIAN_CPF" && !crate::engine::compliance::validate_cpf(matched) {
+                continue;
+            }
+
+            if rule.id == "BRAZILIAN_CNPJ" && !crate::engine::compliance::validate_cnpj(matched) {
+                continue;
+            }
+
+            if rule.id == "DSN_CREDENTIALS"
+                && crate::engine::compliance::extract_dsn_password(matched).is_none()
+            {
+                continue;
+            }
+
             return Some(Sin {
                 path: path_str.to_string(),
                 line_number: line_num,
@@ -265,6 +279,7 @@ pub fn analyze_line(
                 verified: None,
                 confidence: None,
                 confidence_factors: None,
+                confidence_level: None,
             });
         }
     }
@@ -301,6 +316,7 @@ pub fn analyze_line(
                 verified: None,
                 confidence: None,
                 confidence_factors: None,
+                confidence_level: None,
             });
         }
     }
@@ -336,6 +352,7 @@ pub fn analyze_line(
                 verified: None,
                 confidence: None,
                 confidence_factors: None,
+                confidence_level: None,
             });
         }
     }

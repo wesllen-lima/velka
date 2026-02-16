@@ -53,7 +53,7 @@ pub static RULES: &[Rule] = &[
     Rule {
         id: "STRIPE_SECRET",
         description: "Stripe Secret Key detected",
-        pattern: define_regex!(r"sk_live_[0-9a-zA-Z]{24,}"),
+        pattern: define_regex!(r"[sr]k_(?:live|test)_[0-9a-zA-Z]{24,}"),
         severity: Severity::Mortal,
     },
     Rule {
@@ -337,6 +337,26 @@ pub static RULES: &[Rule] = &[
         description: "Generic secret pattern detected",
         pattern: define_regex!(r#"(?i)(secret|token)\s*[:=]\s*['"][a-zA-Z0-9_\-]{20,}['"]"#),
         severity: Severity::Venial,
+    },
+    Rule {
+        id: "BRAZILIAN_CPF",
+        description: "Brazilian CPF (personal ID) detected",
+        pattern: define_regex!(r"\b\d{3}\.?\d{3}\.?\d{3}-?\d{2}\b"),
+        severity: Severity::Mortal,
+    },
+    Rule {
+        id: "BRAZILIAN_CNPJ",
+        description: "Brazilian CNPJ (company ID) detected",
+        pattern: define_regex!(r"\b\d{2}\.?\d{3}\.?\d{3}/?\d{4}-?\d{2}\b"),
+        severity: Severity::Mortal,
+    },
+    Rule {
+        id: "DSN_CREDENTIALS",
+        description: "Database connection string with credentials detected",
+        pattern: define_regex!(
+            r"(?i)(?:postgresql|postgres|mysql|mongodb(?:\+srv)?|rediss?|amqps?|mssql|sqlserver|mariadb|jdbc:[a-z:]+)://[^:]+:[^@]+@"
+        ),
+        severity: Severity::Mortal,
     },
 ];
 
