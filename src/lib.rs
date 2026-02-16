@@ -12,7 +12,7 @@ use std::sync::Arc;
 use crossbeam_channel::unbounded;
 
 pub use config::VelkaConfig;
-pub use domain::{Severity, Sin};
+pub use domain::{ConfidenceLevel, Severity, Sin};
 pub use error::{Result as VelkaResult, VelkaError};
 pub use output::{OutputFormat, RedactionConfig};
 

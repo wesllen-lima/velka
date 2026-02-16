@@ -31,10 +31,31 @@
 - **ML Classifier**: Ensemble scoring for <0.1% false positives
 - **K8s Admission Controller**: Block Pods with secrets in manifests
 - **Runtime Log Scanner**: Monitor container stdout for secret leaks
+- **God Mode**: Deep analysis suite with semantic decoding, compliance checks, and structural validation
+
+---
+
+## Privacy & Security
+
+Velka is **Local-First**, **No-Telemetry**, and **Air-Gapped by Default**. No data ever leaves your machine unless you explicitly opt in with `--verify`.
+
+See **[PRIVACY.md](PRIVACY.md)** for the full privacy policy and independent verification steps.
 
 ---
 
 ## Installation
+
+### Pre-built Binaries (Recommended)
+
+Download the latest release for your platform from [GitHub Releases](https://github.com/wesllen-lima/velka/releases).
+
+```bash
+# Linux / macOS (shell installer)
+curl --proto '=https' --tlsv1.2 -LsSf https://github.com/wesllen-lima/velka/releases/latest/download/velka-installer.sh | sh
+
+# Windows (PowerShell installer)
+powershell -ExecutionPolicy ByPass -c "irm https://github.com/wesllen-lima/velka/releases/latest/download/velka-installer.ps1 | iex"
+```
 
 ### Cargo (from crates.io)
 
@@ -65,7 +86,7 @@ docker run --rm -v $(pwd):/code velka scan /code
 ```toml
 # Cargo.toml
 [dependencies]
-velka = "1.2"
+velka = "1.3"
 ```
 
 ```rust
@@ -570,6 +591,29 @@ Velka is designed to be significantly faster than alternatives (e.g. TruffleHog,
 
 ---
 
+## God Mode (Deep Analysis)
+
+Enable the full analysis suite for maximum detection coverage:
+
+```bash
+velka scan . --god-mode
+```
+
+God Mode activates all advanced engines simultaneously:
+
+| Engine | Description |
+|--------|-------------|
+| **Semantic Analysis** | Decodes Base64/Hex/ROT13 encoded secrets, detects string concatenation obfuscation, and identifies suspicious variable assignments |
+| **Git History Deep Scan** | Forensic scan of entire commit history to find secrets that were committed and later removed |
+| **Compliance (CPF/CNPJ)** | Detects Brazilian PII (CPF and CNPJ numbers) with full check-digit validation |
+| **Structural Validation** | Pattern-specific validators (AWS key prefix/charset, Stripe key mode, JWT structure) that assign confidence levels |
+| **Active Verification** | Opt-in (`--verify`) live validation of detected tokens against provider APIs |
+| **Bloom Filter** | Probabilistic deduplication to avoid reporting the same secret across files |
+
+Each engine contributes to the ensemble confidence score, reducing false positives to <0.1%.
+
+---
+
 ## Architecture
 
 For a deep dive into the Ensemble Scoring engine, rule plugin system, and module map, see **[docs/architecture.md](docs/architecture.md)**.
@@ -579,6 +623,7 @@ For a deep dive into the Ensemble Scoring engine, rule plugin system, and module
 ## Documentation
 
 - **[Architecture](docs/architecture.md)** - Engine internals and scoring system
+- **[Privacy Policy](PRIVACY.md)** - Local-first, no-telemetry guarantee
 - **[Contributing](CONTRIBUTING.md)** - How to contribute
 - **[Changelog](CHANGELOG.md)** - Version history
 - **[Security Policy](SECURITY.md)** - Vulnerability reporting

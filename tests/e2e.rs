@@ -7,8 +7,9 @@ use tempfile::TempDir;
 
 use velka::engine::ml_classifier::classify_default;
 use velka::engine::quarantine;
+use velka::engine::structural_validators;
 use velka::engine::{scan_content, scan_single_file};
-use velka::VelkaConfig;
+use velka::{ConfidenceLevel, VelkaConfig};
 
 /// Full pipeline: detect secret -> classify with ML -> produce LSP-compatible diagnostic -> quarantine file
 #[test]
@@ -226,6 +227,124 @@ fn e2e_honeytoken_skipped() {
     let content = r#"let trap = "AKIA0000000000000000"; // velka:honeytoken"#;
     let sins = scan_content(content, &config).unwrap();
     assert!(sins.is_empty(), "Honeytoken-marked lines should be skipped");
+}
+
+/// Test: Full pipeline from regex match → structural validation → ConfidenceLevel assignment
+#[test]
+fn e2e_confidence_scoring_pipeline_aws() {
+    let temp = TempDir::new().unwrap();
+    let secret_file = temp.path().join("prod.env");
+    fs::write(&secret_file, "AWS_KEY=AKIA1234567890ABCDEF\n").unwrap();
+
+    let config = VelkaConfig::default();
+    let (sender, receiver) = unbounded();
+    scan_single_file(&secret_file, &config, &sender, None).unwrap();
+    drop(sender);
+    let sins: Vec<_> = receiver.iter().collect();
+
+    let aws = sins.iter().find(|s| s.rule_id == "AWS_ACCESS_KEY").unwrap();
+
+    // Pipeline must assign confidence_level
+    assert!(
+        aws.confidence_level.is_some(),
+        "confidence_level must be set after compute_confidence"
+    );
+
+    // Valid AKIA key in a .env file → Critical
+    assert_eq!(
+        aws.confidence_level.unwrap(),
+        ConfidenceLevel::Critical,
+        "Valid AWS key in config file must be Critical"
+    );
+
+    // Numeric confidence must also be populated
+    assert!(aws.confidence.is_some());
+    assert!(aws.confidence.unwrap() >= 0.75);
+}
+
+/// Test: Stripe test key gets Suspicious (never Info — Zero Leak Policy)
+#[test]
+fn e2e_confidence_scoring_stripe_test_key() {
+    let config = VelkaConfig::default();
+    let fake_test_stripe = format!("sk_test_{}", "a".repeat(24));
+    let content = format!(r#"STRIPE_KEY="{}""#, fake_test_stripe);
+
+    let sins = scan_content(&content, &config).unwrap();
+    let stripe = sins.iter().find(|s| s.rule_id == "STRIPE_SECRET");
+    assert!(stripe.is_some(), "Stripe test key must be detected");
+
+    let stripe = stripe.unwrap();
+    assert!(stripe.confidence_level.is_some());
+
+    // Zero Leak Policy: test key must be at minimum Suspicious
+    assert!(
+        stripe.confidence_level.unwrap() >= ConfidenceLevel::Suspicious,
+        "Stripe test key must be >= Suspicious (Zero Leak Policy), got {:?}",
+        stripe.confidence_level
+    );
+
+    // Must NEVER be Info
+    assert_ne!(
+        stripe.confidence_level.unwrap(),
+        ConfidenceLevel::Info,
+        "Stripe test key must never be Info"
+    );
+}
+
+/// Test: Stripe live key gets Critical
+#[test]
+fn e2e_confidence_scoring_stripe_live_key() {
+    let config = VelkaConfig::default();
+    let fake_live_stripe = format!("sk_live_{}", "b".repeat(24));
+    let content = format!(r#"STRIPE_KEY="{}""#, fake_live_stripe);
+
+    let sins = scan_content(&content, &config).unwrap();
+    let stripe = sins.iter().find(|s| s.rule_id == "STRIPE_SECRET");
+    assert!(stripe.is_some(), "Stripe live key must be detected");
+
+    let stripe = stripe.unwrap();
+    assert_eq!(
+        stripe.confidence_level.unwrap(),
+        ConfidenceLevel::Critical,
+        "Stripe live key must be Critical"
+    );
+}
+
+/// Test: Structural validators enforce Zero Leak Policy at the type level
+#[test]
+fn e2e_zero_leak_policy_type_safety() {
+    // Even if score derives Info, enforce_zero_leak_floor promotes to Suspicious
+    let info = ConfidenceLevel::Info;
+    let floored = structural_validators::enforce_zero_leak_floor(info);
+    assert_eq!(floored, ConfidenceLevel::Suspicious);
+
+    // Critical stays Critical
+    let critical = ConfidenceLevel::Critical;
+    let floored = structural_validators::enforce_zero_leak_floor(critical);
+    assert_eq!(floored, ConfidenceLevel::Critical);
+}
+
+/// Test: ML ensemble influences ConfidenceLevel derivation
+#[test]
+fn e2e_ml_ensemble_influences_confidence_level() {
+    // AWS key with valid structure → ML should give high score → Critical
+    let result = classify_default("AKIA1234567890ABCDEF", "AWS_ACCESS_KEY");
+    let ml_level = ConfidenceLevel::from_score(result.score);
+    assert!(
+        ml_level >= ConfidenceLevel::Suspicious,
+        "ML ensemble for valid AWS key should yield at least Suspicious, got {:?} (score: {})",
+        ml_level,
+        result.score
+    );
+
+    // Low-entropy string → ML should give low score → Info
+    let result = classify_default("aaaaaaaaaa", "HIGH_ENTROPY");
+    let ml_level = ConfidenceLevel::from_score(result.score);
+    assert_eq!(
+        ml_level,
+        ConfidenceLevel::Info,
+        "Low-entropy string should be Info"
+    );
 }
 
 /// Test: Disabled rules are respected

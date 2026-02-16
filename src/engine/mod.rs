@@ -1,6 +1,8 @@
 mod analyzer;
+pub mod bloom;
 mod cache;
 mod complexity;
+pub mod compliance;
 pub mod dist;
 mod file_reader;
 mod honeytoken;
@@ -16,6 +18,8 @@ pub mod remediate;
 mod rules;
 pub mod runtime_scanner;
 mod scanner;
+pub mod semantic;
+pub mod structural_validators;
 pub mod vault;
 mod verifier;
 

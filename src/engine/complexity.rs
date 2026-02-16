@@ -122,6 +122,7 @@ pub fn analyze_complexity(path: &Path, sender: &Sender<Sin>) -> Result<()> {
                                 verified: None,
                                 confidence: None,
                                 confidence_factors: None,
+                                confidence_level: None,
                             };
 
                             if tx.send(sin).is_err() {
@@ -163,6 +164,7 @@ pub fn analyze_complexity(path: &Path, sender: &Sender<Sin>) -> Result<()> {
                         verified: None,
                         confidence: None,
                         confidence_factors: None,
+                        confidence_level: None,
                     };
 
                     if tx.send(sin).is_err() {
