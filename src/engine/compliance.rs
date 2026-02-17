@@ -1,3 +1,12 @@
+//! Compliance validators for PII document numbers.
+//!
+//! Each validator implements the official check-digit algorithm for its
+//! document type: Brazilian CPF/CNPJ, Portuguese NIF, Spanish DNI,
+//! US SSN (structural), and IBAN (MOD-97).
+//!
+//! All public functions return `bool` — `true` when the input passes
+//! both structural and mathematical validation.
+
 use regex::Regex;
 use std::sync::LazyLock;
 
@@ -170,6 +179,218 @@ pub fn validate_dsn_confidence(snippet: &str) -> ConfidenceLevel {
     }
 }
 
+// --- NIF Portugal ---
+
+/// Validate a Portuguese NIF (Número de Identificação Fiscal) using Módulo 11.
+#[must_use]
+pub fn validate_nif(nif: &str) -> bool {
+    let digits: Vec<u32> = nif
+        .chars()
+        .filter(char::is_ascii_digit)
+        .filter_map(|c| c.to_digit(10))
+        .collect();
+
+    if digits.len() != 9 {
+        return false;
+    }
+
+    // First digit must be 1-9
+    if digits[0] == 0 {
+        return false;
+    }
+
+    let weights: &[u32] = &[9, 8, 7, 6, 5, 4, 3, 2];
+    let sum: u32 = digits[..8]
+        .iter()
+        .zip(weights.iter())
+        .map(|(&d, &w)| d * w)
+        .sum();
+    let rem = sum % 11;
+    let check = if rem < 2 { 0 } else { 11 - rem };
+    check == digits[8]
+}
+
+/// Structural validation for NIF rule.
+#[must_use]
+pub fn validate_nif_confidence(snippet: &str) -> ConfidenceLevel {
+    static NIF_RE: LazyLock<Regex> =
+        LazyLock::new(|| Regex::new(r"\b[1-9]\d{8}\b").expect("NIF regex"));
+
+    let Some(mat) = NIF_RE.find(snippet) else {
+        return ConfidenceLevel::Suspicious;
+    };
+
+    if validate_nif(mat.as_str()) {
+        ConfidenceLevel::Critical
+    } else {
+        ConfidenceLevel::Info
+    }
+}
+
+// --- DNI Spain ---
+
+/// Validate a Spanish DNI (Documento Nacional de Identidad).
+/// Format: 8 digits + 1 control letter.
+#[must_use]
+pub fn validate_dni(dni: &str) -> bool {
+    const TABLE: &[u8] = b"TRWAGMYFPDXBNJZSQVHLCKE";
+
+    let clean: String = dni.chars().filter(|c| !c.is_whitespace() && *c != '-').collect();
+
+    if !clean.is_ascii() || clean.len() != 9 {
+        return false;
+    }
+
+    let number_part = &clean[..8];
+    let letter = clean.chars().last().unwrap_or(' ');
+
+    let Ok(number) = number_part.parse::<u32>() else {
+        return false;
+    };
+
+    let expected = TABLE[(number % 23) as usize] as char;
+
+    letter.to_ascii_uppercase() == expected
+}
+
+/// Structural validation for DNI rule.
+#[must_use]
+pub fn validate_dni_confidence(snippet: &str) -> ConfidenceLevel {
+    static DNI_RE: LazyLock<Regex> =
+        LazyLock::new(|| Regex::new(r"\b\d{8}[A-Za-z]\b").expect("DNI regex"));
+
+    let Some(mat) = DNI_RE.find(snippet) else {
+        return ConfidenceLevel::Suspicious;
+    };
+
+    if validate_dni(mat.as_str()) {
+        ConfidenceLevel::Critical
+    } else {
+        ConfidenceLevel::Info
+    }
+}
+
+// --- SSN USA ---
+
+/// Validate a US Social Security Number (structural only, no check digit).
+/// Format: AAA-BB-CCCC where AAA != 000/666/900-999, BB != 00, CCCC != 0000.
+#[must_use]
+pub fn validate_ssn(ssn: &str) -> bool {
+    let digits: Vec<u32> = ssn
+        .chars()
+        .filter(char::is_ascii_digit)
+        .filter_map(|c| c.to_digit(10))
+        .collect();
+
+    if digits.len() != 9 {
+        return false;
+    }
+
+    let area = digits[0] * 100 + digits[1] * 10 + digits[2];
+    let group = digits[3] * 10 + digits[4];
+    let serial = digits[5] * 1000 + digits[6] * 100 + digits[7] * 10 + digits[8];
+
+    if area == 0 || area == 666 || area >= 900 {
+        return false;
+    }
+    if group == 0 {
+        return false;
+    }
+    if serial == 0 {
+        return false;
+    }
+
+    true
+}
+
+/// Structural validation for SSN rule.
+#[must_use]
+pub fn validate_ssn_confidence(snippet: &str) -> ConfidenceLevel {
+    static SSN_RE: LazyLock<Regex> =
+        LazyLock::new(|| Regex::new(r"\b\d{3}-\d{2}-\d{4}\b").expect("SSN regex"));
+
+    let Some(mat) = SSN_RE.find(snippet) else {
+        return ConfidenceLevel::Suspicious;
+    };
+
+    if validate_ssn(mat.as_str()) {
+        ConfidenceLevel::Critical
+    } else {
+        ConfidenceLevel::Info
+    }
+}
+
+// --- IBAN ---
+
+/// Validate an IBAN using MOD-97 algorithm (ISO 13616).
+#[must_use]
+pub fn validate_iban(iban: &str) -> bool {
+    let clean: String = iban
+        .chars()
+        .filter(|c| !c.is_whitespace())
+        .collect::<String>()
+        .to_uppercase();
+
+    if !clean.is_ascii() || clean.len() < 5 || clean.len() > 34 {
+        return false;
+    }
+
+    // First 2 chars must be letters (country code)
+    if !clean[..2].chars().all(|c| c.is_ascii_uppercase()) {
+        return false;
+    }
+
+    // Chars 3-4 must be digits (check digits)
+    if !clean[2..4].chars().all(|c| c.is_ascii_digit()) {
+        return false;
+    }
+
+    // Remaining must be alphanumeric
+    if !clean[4..].chars().all(|c| c.is_ascii_alphanumeric()) {
+        return false;
+    }
+
+    // MOD-97 check: move first 4 chars to end, convert letters to numbers
+    let rearranged = format!("{}{}", &clean[4..], &clean[..4]);
+    let numeric: String = rearranged
+        .chars()
+        .map(|c| {
+            if c.is_ascii_digit() {
+                c.to_string()
+            } else {
+                (c as u32 - u32::from(b'A') + 10).to_string()
+            }
+        })
+        .collect();
+
+    // Calculate mod 97 using chunks to avoid overflow
+    let mut remainder: u64 = 0;
+    for chunk in numeric.as_bytes().chunks(9) {
+        let s: String = std::str::from_utf8(chunk).unwrap_or("0").to_string();
+        let combined = format!("{remainder}{s}");
+        remainder = combined.parse::<u64>().unwrap_or(0) % 97;
+    }
+
+    remainder == 1
+}
+
+/// Structural validation for IBAN rule.
+#[must_use]
+pub fn validate_iban_confidence(snippet: &str) -> ConfidenceLevel {
+    static IBAN_RE: LazyLock<Regex> =
+        LazyLock::new(|| Regex::new(r"\b[A-Z]{2}\d{2}[A-Z0-9]{4,30}\b").expect("IBAN regex"));
+
+    let Some(mat) = IBAN_RE.find(snippet) else {
+        return ConfidenceLevel::Suspicious;
+    };
+
+    if validate_iban(mat.as_str()) {
+        ConfidenceLevel::Critical
+    } else {
+        ConfidenceLevel::Info
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -278,6 +499,100 @@ mod tests {
     fn test_dsn_mssql() {
         let dsn = "mssql://sa:MyS3cur3Pass@sqlserver.prod.com:1433/master";
         assert_eq!(extract_dsn_password(dsn), Some("MyS3cur3Pass".to_string()));
+    }
+
+    // --- NIF Portugal ---
+
+    #[test]
+    fn test_nif_valid() {
+        assert!(validate_nif("123456789"));
+    }
+
+    #[test]
+    fn test_nif_invalid_check_digit() {
+        assert!(!validate_nif("123456780"));
+    }
+
+    #[test]
+    fn test_nif_wrong_length() {
+        assert!(!validate_nif("12345"));
+    }
+
+    #[test]
+    fn test_nif_starts_with_zero() {
+        assert!(!validate_nif("012345678"));
+    }
+
+    // --- DNI Spain ---
+
+    #[test]
+    fn test_dni_valid() {
+        // 12345678Z is valid: 12345678 % 23 = 14 → TABLE[14] = 'Z'
+        assert!(validate_dni("12345678Z"));
+    }
+
+    #[test]
+    fn test_dni_invalid_letter() {
+        assert!(!validate_dni("12345678A"));
+    }
+
+    #[test]
+    fn test_dni_wrong_length() {
+        assert!(!validate_dni("1234567Z"));
+    }
+
+    // --- SSN USA ---
+
+    #[test]
+    fn test_ssn_valid() {
+        assert!(validate_ssn("123-45-6789"));
+    }
+
+    #[test]
+    fn test_ssn_area_zero() {
+        assert!(!validate_ssn("000-45-6789"));
+    }
+
+    #[test]
+    fn test_ssn_area_666() {
+        assert!(!validate_ssn("666-45-6789"));
+    }
+
+    #[test]
+    fn test_ssn_area_900_plus() {
+        assert!(!validate_ssn("900-45-6789"));
+    }
+
+    #[test]
+    fn test_ssn_group_zero() {
+        assert!(!validate_ssn("123-00-6789"));
+    }
+
+    #[test]
+    fn test_ssn_serial_zero() {
+        assert!(!validate_ssn("123-45-0000"));
+    }
+
+    // --- IBAN ---
+
+    #[test]
+    fn test_iban_valid_gb() {
+        assert!(validate_iban("GB29NWBK60161331926819"));
+    }
+
+    #[test]
+    fn test_iban_valid_de() {
+        assert!(validate_iban("DE89370400440532013000"));
+    }
+
+    #[test]
+    fn test_iban_invalid_check() {
+        assert!(!validate_iban("GB29NWBK60161331926818"));
+    }
+
+    #[test]
+    fn test_iban_too_short() {
+        assert!(!validate_iban("GB29"));
     }
 
     #[test]
