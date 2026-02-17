@@ -243,7 +243,7 @@ mod tests {
     #[test]
     fn test_aws_key_in_full_line() {
         assert_eq!(
-            validate_aws_access_key(r#"AWS_KEY=AKIA1234567890ABCDEF"#),
+            validate_aws_access_key(r"AWS_KEY=AKIA1234567890ABCDEF"),
             ConfidenceLevel::Critical
         );
     }

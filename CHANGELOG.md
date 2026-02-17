@@ -25,7 +25,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Technical
 - New modules: `engine::ast_analyzer`, `engine::iac_analyzer`, `engine::baseline`, `cli::baseline`
-- `Sin` struct gains `risk_level: Option<RiskLevel>` and `verification_detail: Option<VerificationDetail>` fields
+- `Sin` struct gains `verification_detail: Option<VerificationDetail>` field; `RiskLevel` is embedded inside `VerificationDetail`
 - 329 tests passing (up from ~280 in v1.3.0); added regression, property-based (`proptest`), and IaC unit tests
 - ~1,700 new lines of production code across sprints 11–14
 

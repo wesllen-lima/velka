@@ -7,7 +7,7 @@
 **O Juiz dos Pecados do Código**
 
 [![Rust](https://img.shields.io/badge/Rust-1.70%2B-orange?logo=rust)](https://www.rust-lang.org/)
-[![Release](https://img.shields.io/badge/Release-v1.2.0-green)](https://github.com/wesllen-lima/velka/releases)
+[![Release](https://img.shields.io/badge/Release-v1.4.0-green)](https://github.com/wesllen-lima/velka/releases)
 [![License](https://img.shields.io/badge/License-MIT%2FApache--2.0-blue)](LICENSE)
 
 > *"Thou who art Undead, art chosen... to expose the guilty."*
@@ -16,12 +16,22 @@
 
 ## Funcionalidades
 
-- **52 regras de detecção**: AWS, GCP, Azure, GitHub, Stripe, SendGrid, Twilio, Datadog, Cloudflare, Supabase, Vercel e mais
+- **52+ regras de detecção**: AWS, GCP, Azure, GitHub, Stripe, SendGrid, Twilio, Datadog, Cloudflare, Supabase, Vercel e mais
+- **Conformidade PII**: CPF, CNPJ (incluindo formato alfanumérico 2026), NIF, DNI, SSN, IBAN — com validação de dígito verificador
 - **Privacidade em primeiro lugar**: Zero telemetria, sem chamadas de rede, segredos redactados por padrão
 - **Alta performance**: I/O mapeado em memória, varredura paralela, regex compiladas
 - **Pronto para CI/CD**: JUnit, SARIF, CSV, Markdown, HTML, report
 - **Varredura incremental**: `--diff` e `--staged` para pre-commit rápido
 - **Forense Git**: `--deep-scan` encontra segredos no histórico de commits
+- **God Mode**: `--god-mode` ativa análise semântica, dedup bloom e pontuação ML completa
+- **Servidor LSP**: Detecção em tempo real no editor
+- **TUI Interativo**: Dashboard terminal para triagem de achados
+- **Classificador ML**: Pontuação ensemble (entropia + frequência de chars + estrutural + tamanho)
+- **Controlador de Admissão K8s**: Bloqueia Pods com segredos nos manifestos
+- **Scanner de Logs em Runtime**: Monitora stdout de containers
+- **Análise AST**: Filtra falsos positivos em funções de teste e docstrings (v1.4.0)
+- **Rastreamento de Baseline**: `velka baseline save/diff` detecta novos vazamentos (v1.4.0)
+- **Scanner IaC**: Terraform, Kubernetes, Dockerfile (v1.4.0)
 - **API como biblioteca**: Use como crate Rust nas suas ferramentas
 
 ---
@@ -57,7 +67,7 @@ docker run --rm -v $(pwd):/code velka scan /code
 ```toml
 # Cargo.toml
 [dependencies]
-velka = "1.2"
+velka = "1.4"
 ```
 
 ```rust
@@ -270,7 +280,7 @@ velka-scan:
 ```yaml
 repos:
   - repo: https://github.com/wesllen-lima/velka
-    rev: v1.2.0
+    rev: v1.4.0
     hooks:
       - id: velka
 ```

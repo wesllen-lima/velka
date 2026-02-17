@@ -283,17 +283,6 @@ fn verify_slack_webhook(snippet: &str) -> Option<bool> {
     Some(!resp.status().is_server_error())
 }
 
-fn path_suggests_test(path: &str) -> bool {
-    let normalized = path.replace('\\', "/");
-    normalized.contains("/tests/")
-        || normalized.contains("/test/")
-        || normalized.contains("/__tests__/")
-        || normalized.contains("/spec/")
-        || normalized.contains(".spec.")
-        || normalized.contains("_test.")
-        || normalized.contains(".test.")
-}
-
 fn path_suggests_config(path: &str) -> bool {
     let path_lower = path.to_lowercase();
     let p = std::path::Path::new(&path_lower);
@@ -395,7 +384,7 @@ pub fn compute_confidence(sin: &mut Sin) {
         score += 0.1;
         factors.push("+0.1 config_file".to_string());
     }
-    if path_suggests_test(&sin.path) {
+    if crate::engine::ast_analyzer::is_test_file(&sin.path) {
         score -= 0.2;
         factors.push("-0.2 test_file_path".to_string());
     }
@@ -449,7 +438,7 @@ mod tests {
         let mut sin = make_sin("AWS_ACCESS_KEY", "src/main.rs", "AKIA1234567890ABCDEF");
         compute_confidence(&mut sin);
         let conf = sin.confidence.unwrap();
-        assert!(conf > 0.7, "Expected > 0.7, got {}", conf);
+        assert!(conf > 0.7, "Expected > 0.7, got {conf}");
     }
 
     #[test]
@@ -463,8 +452,7 @@ mod tests {
         let conf = sin.confidence.unwrap();
         assert!(
             conf < 0.7,
-            "Test file should reduce confidence, got {}",
-            conf
+            "Test file should reduce confidence, got {conf}"
         );
     }
 
@@ -475,8 +463,7 @@ mod tests {
         let conf = sin.confidence.unwrap();
         assert!(
             conf > 0.8,
-            "Config file should boost confidence, got {}",
-            conf
+            "Config file should boost confidence, got {conf}"
         );
     }
 
@@ -488,8 +475,7 @@ mod tests {
         let conf = sin.confidence.unwrap();
         assert!(
             conf >= 0.8,
-            "Verified should boost confidence, got {}",
-            conf
+            "Verified should boost confidence, got {conf}"
         );
     }
 
@@ -512,11 +498,7 @@ mod tests {
         ];
         enhance_confidence_with_context(&mut sin, &lines, 2);
         let conf = sin.confidence.unwrap();
-        assert!(
-            conf > 0.5,
-            "Nearby keyword should boost confidence, got {}",
-            conf
-        );
+        assert!(conf > 0.5, "Nearby keyword should boost confidence, got {conf}");
     }
 
     #[test]
@@ -526,15 +508,16 @@ mod tests {
         let lines = vec!["let key = \"AKIA1234567890ABCDEF\";"];
         enhance_confidence_with_context(&mut sin, &lines, 0);
         let conf = sin.confidence.unwrap();
-        assert!(conf > 0.5, "Assignment context should boost, got {}", conf);
+        assert!(conf > 0.5, "Assignment context should boost, got {conf}");
     }
 
     #[test]
     fn test_path_suggests_test_various() {
-        assert!(path_suggests_test("/project/tests/scan_test.rs"));
-        assert!(path_suggests_test("/project/__tests__/app.test.js"));
-        assert!(path_suggests_test("spec/helper.spec.ts"));
-        assert!(!path_suggests_test("src/main.rs"));
+        use crate::engine::ast_analyzer::is_test_file;
+        assert!(is_test_file("/project/tests/scan_test.rs"));
+        assert!(is_test_file("/project/__tests__/app.test.js"));
+        assert!(is_test_file("spec/helper.spec.ts"));
+        assert!(!is_test_file("src/main.rs"));
     }
 
     #[test]
@@ -558,6 +541,6 @@ mod tests {
         sin.verified = Some(true);
         compute_confidence(&mut sin);
         let conf = sin.confidence.unwrap();
-        assert!(conf <= 1.0 && conf >= 0.0);
+        assert!((0.0..=1.0).contains(&conf));
     }
 }

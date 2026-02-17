@@ -95,7 +95,7 @@ docker run --rm -v $(pwd):/code velka scan /code
 ```toml
 # Cargo.toml
 [dependencies]
-velka = "1.3"
+velka = "1.4"
 ```
 
 ```rust
@@ -265,7 +265,7 @@ git diff | velka stdin
 cat logs/*.log | velka stdin --format json
 
 # Install pre-commit hook
-velka install-hook
+velka hook install
 ```
 
 ### Exit codes
@@ -619,7 +619,7 @@ velka-scan:
 ```yaml
 repos:
   - repo: https://github.com/wesllen-lima/velka
-    rev: v1.2.0
+    rev: v1.4.0
     hooks:
       - id: velka
 ```
