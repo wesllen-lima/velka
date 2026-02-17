@@ -17,43 +17,35 @@ use serde::Serialize;
 // ── Patterns ───────────────────────────────────────────────────────────────
 
 // Terraform patterns
-static TF_SG_CIDR: LazyLock<Regex> = LazyLock::new(|| {
-    Regex::new(r#"cidr_blocks\s*=\s*\[?\s*["']0\.0\.0\.0/0["']"#).unwrap()
-});
-static TF_IPV6_CIDR: LazyLock<Regex> = LazyLock::new(|| {
-    Regex::new(r#"ipv6_cidr_blocks\s*=\s*\[?\s*["']::/0["']"#).unwrap()
-});
-static TF_IAM_WILDCARD: LazyLock<Regex> = LazyLock::new(|| {
-    Regex::new(r#""Action"\s*:\s*"\*""#).unwrap()
-});
+static TF_SG_CIDR: LazyLock<Regex> =
+    LazyLock::new(|| Regex::new(r#"cidr_blocks\s*=\s*\[?\s*["']0\.0\.0\.0/0["']"#).unwrap());
+static TF_IPV6_CIDR: LazyLock<Regex> =
+    LazyLock::new(|| Regex::new(r#"ipv6_cidr_blocks\s*=\s*\[?\s*["']::/0["']"#).unwrap());
+static TF_IAM_WILDCARD: LazyLock<Regex> =
+    LazyLock::new(|| Regex::new(r#""Action"\s*:\s*"\*""#).unwrap());
 static TF_IAM_WILDCARD_HCL: LazyLock<Regex> = LazyLock::new(|| {
     // Matches HCL: `actions = ["*"]`, `actions = "*"`, `Action = "*"` (jsonencode)
     Regex::new(r#"(?i)(?:actions|Action)\s*=\s*\[?\s*["']\*["']"#).unwrap()
 });
-static TF_S3_PUBLIC_ACL: LazyLock<Regex> = LazyLock::new(|| {
-    Regex::new(r#"acl\s*=\s*["']public-read(?:-write)?["']"#).unwrap()
-});
-static TF_S3_PUBLIC_ACCESS: LazyLock<Regex> = LazyLock::new(|| {
-    Regex::new(r"block_public_acls\s*=\s*false").unwrap()
-});
+static TF_S3_PUBLIC_ACL: LazyLock<Regex> =
+    LazyLock::new(|| Regex::new(r#"acl\s*=\s*["']public-read(?:-write)?["']"#).unwrap());
+static TF_S3_PUBLIC_ACCESS: LazyLock<Regex> =
+    LazyLock::new(|| Regex::new(r"block_public_acls\s*=\s*false").unwrap());
 static TF_OPEN_INGRESS: LazyLock<Regex> = LazyLock::new(|| {
     Regex::new(r"(?:from|to)_port\s*=\s*(?:0|22|3389|5432|3306|6379|27017)").unwrap()
 });
-static TF_SG_RESOURCE: LazyLock<Regex> = LazyLock::new(|| {
-    Regex::new(r#"resource\s+["']aws_security_group["']"#).unwrap()
-});
+static TF_SG_RESOURCE: LazyLock<Regex> =
+    LazyLock::new(|| Regex::new(r#"resource\s+["']aws_security_group["']"#).unwrap());
 
 // Kubernetes YAML patterns
 static K8S_PRIVILEGED: LazyLock<Regex> =
     LazyLock::new(|| Regex::new(r"privileged\s*:\s*true").unwrap());
 static K8S_HOST_NETWORK: LazyLock<Regex> =
     LazyLock::new(|| Regex::new(r"hostNetwork\s*:\s*true").unwrap());
-static K8S_HOST_PID: LazyLock<Regex> =
-    LazyLock::new(|| Regex::new(r"hostPID\s*:\s*true").unwrap());
+static K8S_HOST_PID: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"hostPID\s*:\s*true").unwrap());
 static K8S_ALLOW_PRIV_ESCALATION: LazyLock<Regex> =
     LazyLock::new(|| Regex::new(r"allowPrivilegeEscalation\s*:\s*true").unwrap());
-static K8S_ROOT_USER: LazyLock<Regex> =
-    LazyLock::new(|| Regex::new(r"runAsUser\s*:\s*0").unwrap());
+static K8S_ROOT_USER: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"runAsUser\s*:\s*0").unwrap());
 static K8S_UNSAFE_SYSCTLS: LazyLock<Regex> =
     LazyLock::new(|| Regex::new(r"unsafe-sysctl").unwrap());
 static K8S_ALL_CAPABILITIES: LazyLock<Regex> =
@@ -68,12 +60,10 @@ static DOCKER_CURL_PIPE: LazyLock<Regex> = LazyLock::new(|| {
 });
 static DOCKER_USER_ROOT: LazyLock<Regex> =
     LazyLock::new(|| Regex::new(r"^USER\s+(?:root|0)\s*$").unwrap());
-static DOCKER_ADD_URL: LazyLock<Regex> =
-    LazyLock::new(|| Regex::new(r"^ADD\s+https?://").unwrap());
+static DOCKER_ADD_URL: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"^ADD\s+https?://").unwrap());
 static DOCKER_LATEST_TAG: LazyLock<Regex> =
     LazyLock::new(|| Regex::new(r"^FROM\s+\S+:latest(?:\s|$)").unwrap());
-static DOCKER_SUDO: LazyLock<Regex> =
-    LazyLock::new(|| Regex::new(r"RUN\s+.*\bsudo\b").unwrap());
+static DOCKER_SUDO: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"RUN\s+.*\bsudo\b").unwrap());
 static DOCKER_EXPOSE_22: LazyLock<Regex> =
     LazyLock::new(|| Regex::new(r"^EXPOSE\s+22(?:\s|$)").unwrap());
 
@@ -211,7 +201,9 @@ fn scan_terraform(path: &str, content: &str) -> Vec<IacFinding> {
                         description: format!(
                             "Security group exposes port(s) to 0.0.0.0/0 (line {sg_port_line})"
                         ),
-                        recommendation: "Restrict ingress/egress to specific IP ranges instead of 0.0.0.0/0".to_string(),
+                        recommendation:
+                            "Restrict ingress/egress to specific IP ranges instead of 0.0.0.0/0"
+                                .to_string(),
                         severity: IacSeverity::Critical,
                     });
                 }
@@ -234,8 +226,10 @@ fn scan_terraform(path: &str, content: &str) -> Vec<IacFinding> {
                 path: path.to_string(),
                 line_number: line_num,
                 rule_id: "TF_IAM_WILDCARD".to_string(),
-                description: "IAM policy grants wildcard Action: \"*\" (full permissions)".to_string(),
-                recommendation: "Replace `*` with the minimum set of required IAM actions".to_string(),
+                description: "IAM policy grants wildcard Action: \"*\" (full permissions)"
+                    .to_string(),
+                recommendation: "Replace `*` with the minimum set of required IAM actions"
+                    .to_string(),
                 severity: IacSeverity::Critical,
             });
         }
@@ -247,8 +241,8 @@ fn scan_terraform(path: &str, content: &str) -> Vec<IacFinding> {
                 line_number: line_num,
                 rule_id: "TF_S3_PUBLIC_ACL".to_string(),
                 description: "S3 bucket ACL is set to public-read or public-read-write".to_string(),
-                recommendation:
-                    "Use `aws_s3_bucket_public_access_block` to block public access".to_string(),
+                recommendation: "Use `aws_s3_bucket_public_access_block` to block public access"
+                    .to_string(),
                 severity: IacSeverity::Critical,
             });
         }
@@ -410,7 +404,8 @@ fn scan_dockerfile(path: &str, content: &str) -> Vec<IacFinding> {
                 path: path.to_string(),
                 line_number: line_num,
                 rule_id: "DOCKER_ADD_URL".to_string(),
-                description: "Dockerfile uses ADD with a remote URL (no integrity check)".to_string(),
+                description: "Dockerfile uses ADD with a remote URL (no integrity check)"
+                    .to_string(),
                 recommendation: "Use RUN curl + checksum verification instead of ADD".to_string(),
                 severity: IacSeverity::High,
             });
@@ -484,7 +479,10 @@ resource "aws_iam_role_policy" "admin" {
 "#;
         let findings = scan_terraform("main.tf", content);
         let ids: Vec<&str> = findings.iter().map(|f| f.rule_id.as_str()).collect();
-        assert!(ids.contains(&"TF_IAM_WILDCARD"), "expected TF_IAM_WILDCARD, got: {ids:?}");
+        assert!(
+            ids.contains(&"TF_IAM_WILDCARD"),
+            "expected TF_IAM_WILDCARD, got: {ids:?}"
+        );
     }
 
     #[test]
@@ -528,7 +526,9 @@ resource "aws_s3_bucket" "data" {
     fn test_docker_curl_pipe() {
         let content = "FROM ubuntu:20.04\nRUN curl https://example.com/install.sh | bash\n";
         let findings = scan_dockerfile("Dockerfile", content);
-        assert!(findings.iter().any(|f| f.rule_id == "DOCKER_CURL_PIPE_SHELL"));
+        assert!(findings
+            .iter()
+            .any(|f| f.rule_id == "DOCKER_CURL_PIPE_SHELL"));
     }
 
     #[test]

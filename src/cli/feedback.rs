@@ -24,7 +24,10 @@ pub fn run_feedback_mark(file: &Path, line: usize) -> Result<()> {
         return Ok(());
     };
 
-    println!("Found: [{}] {} (line {})", sin.rule_id, sin.description, sin.line_number);
+    println!(
+        "Found: [{}] {} (line {})",
+        sin.rule_id, sin.description, sin.line_number
+    );
     println!("Snippet: {}", sin.snippet);
     print!("\nIs this a false positive? [y/N] ");
     std::io::stdout().flush()?;

@@ -40,8 +40,10 @@ pub fn verify(sin: &mut Sin) {
                 sin.verified = Some(d.is_active);
                 if d.is_active {
                     let identity = d.identity.as_deref().unwrap_or("unknown");
-                    sin.description =
-                        format!("CRITICAL (Verified) [{}] {}: {}", d.risk_level, identity, sin.description);
+                    sin.description = format!(
+                        "CRITICAL (Verified) [{}] {}: {}",
+                        d.risk_level, identity, sin.description
+                    );
                 }
             }
             sin.verification_detail = detail;
@@ -52,7 +54,8 @@ pub fn verify(sin: &mut Sin) {
                 sin.verified = Some(d.is_active);
                 if d.is_active {
                     let identity = d.identity.as_deref().unwrap_or("unknown");
-                    sin.description = format!("Verified GitHub token ({}): {}", identity, sin.description);
+                    sin.description =
+                        format!("Verified GitHub token ({}): {}", identity, sin.description);
                 }
             }
             sin.verification_detail = detail;
@@ -105,8 +108,9 @@ fn verify_aws_rich(snippet: &str, context: &[String]) -> Option<VerificationDeta
     let datestamp = now.format("%Y%m%d").to_string();
     let amz_date = now.format("%Y%m%dT%H%M%SZ").to_string();
     let payload_hash = sha256_hex(body);
-    let canonical_headers =
-        format!("content-type:application/x-www-form-urlencoded\nhost:{host}\nx-amz-date:{amz_date}\n");
+    let canonical_headers = format!(
+        "content-type:application/x-www-form-urlencoded\nhost:{host}\nx-amz-date:{amz_date}\n"
+    );
     let signed_headers = "content-type;host;x-amz-date";
     let canonical_request =
         format!("{method}\n/\n\n{canonical_headers}\n{signed_headers}\n{payload_hash}");
@@ -212,7 +216,10 @@ fn verify_github_rich(snippet: &str) -> Option<VerificationDetail> {
     };
 
     // Risk level from scopes
-    let risk_level = if scopes.iter().any(|s| s == "admin:org" || s == "delete_repo" || s == "admin:repo_hook") {
+    let risk_level = if scopes
+        .iter()
+        .any(|s| s == "admin:org" || s == "delete_repo" || s == "admin:repo_hook")
+    {
         RiskLevel::Administrative
     } else if scopes.iter().any(|s| s == "repo" || s == "write:org") {
         RiskLevel::ReadWrite
@@ -259,7 +266,6 @@ fn verify_stripe_rich(snippet: &str) -> Option<VerificationDetail> {
         risk_level,
     })
 }
-
 
 fn verify_sendgrid(snippet: &str) -> Option<bool> {
     let re = SENDGRID_API_RE.as_ref()?;
@@ -450,10 +456,7 @@ mod tests {
         );
         compute_confidence(&mut sin);
         let conf = sin.confidence.unwrap();
-        assert!(
-            conf < 0.7,
-            "Test file should reduce confidence, got {conf}"
-        );
+        assert!(conf < 0.7, "Test file should reduce confidence, got {conf}");
     }
 
     #[test]
@@ -473,10 +476,7 @@ mod tests {
         sin.verified = Some(true);
         compute_confidence(&mut sin);
         let conf = sin.confidence.unwrap();
-        assert!(
-            conf >= 0.8,
-            "Verified should boost confidence, got {conf}"
-        );
+        assert!(conf >= 0.8, "Verified should boost confidence, got {conf}");
     }
 
     #[test]
@@ -498,7 +498,10 @@ mod tests {
         ];
         enhance_confidence_with_context(&mut sin, &lines, 2);
         let conf = sin.confidence.unwrap();
-        assert!(conf > 0.5, "Nearby keyword should boost confidence, got {conf}");
+        assert!(
+            conf > 0.5,
+            "Nearby keyword should boost confidence, got {conf}"
+        );
     }
 
     #[test]

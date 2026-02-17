@@ -11,17 +11,17 @@ use crate::config::{compile_allowlist_file_patterns, compile_allowlist_regexes, 
 use crate::domain::Severity;
 use crate::domain::Sin;
 use crate::engine::analyzer::{analyze_line, AnalyzeLineConfig};
+use crate::engine::ast_analyzer;
+use crate::engine::bloom::BloomFilter;
 use crate::engine::cache::{CacheEntry, CachedMatch, ScanCache};
+use crate::engine::feedback::FeedbackStore;
 use crate::engine::file_reader::{is_binary, read_file_content};
 use crate::engine::honeytoken;
-use crate::engine::rules::CompiledCustomRule;
 use crate::engine::ml_classifier;
-use crate::engine::ast_analyzer;
+use crate::engine::rules::CompiledCustomRule;
 use crate::engine::semantic;
 use crate::engine::verifier::{self, compute_confidence, enhance_confidence_with_context};
 use crate::utils::build_context;
-use crate::engine::bloom::BloomFilter;
-use crate::engine::feedback::FeedbackStore;
 use chrono::Utc;
 use regex::Regex;
 
@@ -76,10 +76,7 @@ fn compute_ignore_ranges(lines: &[&str]) -> Vec<IgnoreRange> {
 }
 
 fn get_entropy_threshold(path: &Path, base: f32) -> f32 {
-    let file_name = path
-        .file_name()
-        .and_then(|n| n.to_str())
-        .unwrap_or("");
+    let file_name = path.file_name().and_then(|n| n.to_str()).unwrap_or("");
 
     // Check compound extensions first (e.g. "bundle.min.js")
     if file_name.ends_with(".min.js") || file_name.ends_with(".min.css") {
@@ -286,7 +283,6 @@ pub fn investigate_with_mode(
     investigate_internal(path, config, sender, show_progress, scan_mode, bloom)
 }
 
-
 pub fn scan_single_file(
     file_path: &Path,
     config: &VelkaConfig,
@@ -459,7 +455,14 @@ pub fn investigate_with_progress(
     sender: &Sender<Sin>,
     show_progress: bool,
 ) -> Result<()> {
-    investigate_internal(path, config, sender, show_progress, ScanMode::default(), None)
+    investigate_internal(
+        path,
+        config,
+        sender,
+        show_progress,
+        ScanMode::default(),
+        None,
+    )
 }
 
 #[allow(clippy::needless_pass_by_value)]

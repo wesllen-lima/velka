@@ -52,7 +52,10 @@ pub fn run_baseline_diff(
     exit_code: bool,
 ) -> Result<()> {
     let saved = baseline::load(baseline_file)?;
-    println!("Baseline: {} finding(s) @ {}", saved.total_findings, saved.created_at);
+    println!(
+        "Baseline: {} finding(s) @ {}",
+        saved.total_findings, saved.created_at
+    );
     println!("Scanning {}…\n", scan_path.display());
 
     let current = scan_dir(scan_path)?;

@@ -96,7 +96,10 @@ impl FeedbackStore {
     }
 
     fn extract_file_pattern(path: &str) -> String {
-        if let Some(ext) = std::path::Path::new(path).extension().and_then(|e| e.to_str()) {
+        if let Some(ext) = std::path::Path::new(path)
+            .extension()
+            .and_then(|e| e.to_str())
+        {
             format!("*.{ext}")
         } else {
             "*".to_string()

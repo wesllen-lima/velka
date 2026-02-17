@@ -85,11 +85,10 @@ impl BaselineDiff {
 /// Returns the default baseline path: `~/.velka/baseline.json`.
 #[must_use]
 pub fn default_baseline_path() -> PathBuf {
-    directories::BaseDirs::new()
-        .map_or_else(
-            || PathBuf::from(".velka_baseline.json"),
-            |d| d.home_dir().join(".velka").join("baseline.json"),
-        )
+    directories::BaseDirs::new().map_or_else(
+        || PathBuf::from(".velka_baseline.json"),
+        |d| d.home_dir().join(".velka").join("baseline.json"),
+    )
 }
 
 /// Save `findings` as the new baseline.
@@ -109,8 +108,7 @@ pub fn save(findings: &[Sin], path: Option<&Path>) -> Result<()> {
         entries,
     };
 
-    let json =
-        serde_json::to_string_pretty(&baseline).context("Failed to serialize baseline")?;
+    let json = serde_json::to_string_pretty(&baseline).context("Failed to serialize baseline")?;
     std::fs::write(&dest, json)
         .with_context(|| format!("Cannot write baseline to {}", dest.display()))?;
 
@@ -121,8 +119,12 @@ pub fn save(findings: &[Sin], path: Option<&Path>) -> Result<()> {
 pub fn load(path: Option<&Path>) -> Result<Baseline> {
     let src = path.map_or_else(default_baseline_path, PathBuf::from);
 
-    let raw = std::fs::read_to_string(&src)
-        .with_context(|| format!("No baseline found at {}. Run `velka baseline save` first.", src.display()))?;
+    let raw = std::fs::read_to_string(&src).with_context(|| {
+        format!(
+            "No baseline found at {}. Run `velka baseline save` first.",
+            src.display()
+        )
+    })?;
 
     serde_json::from_str(&raw).with_context(|| "Baseline file is corrupt or has unknown format")
 }
@@ -132,19 +134,13 @@ pub fn load(path: Option<&Path>) -> Result<Baseline> {
 /// Compare `current` findings against a saved `baseline`.
 #[must_use]
 pub fn diff(current: &[Sin], baseline: &Baseline) -> BaselineDiff {
-    let current_set: HashSet<BaselineEntry> =
-        current.iter().map(BaselineEntry::from_sin).collect();
+    let current_set: HashSet<BaselineEntry> = current.iter().map(BaselineEntry::from_sin).collect();
     let baseline_set: HashSet<BaselineEntry> = baseline.entries.iter().cloned().collect();
 
-    let new_findings: Vec<BaselineEntry> = current_set
-        .difference(&baseline_set)
-        .cloned()
-        .collect();
+    let new_findings: Vec<BaselineEntry> = current_set.difference(&baseline_set).cloned().collect();
 
-    let removed_findings: Vec<BaselineEntry> = baseline_set
-        .difference(&current_set)
-        .cloned()
-        .collect();
+    let removed_findings: Vec<BaselineEntry> =
+        baseline_set.difference(&current_set).cloned().collect();
 
     let unchanged_count = current_set.intersection(&baseline_set).count();
 

@@ -171,8 +171,18 @@ fn score_structural(candidate: &str, rule_id: &str) -> f32 {
 
     if let Some(charset) = rule.charset {
         let matches_charset = match charset {
-            "alphanum" => candidate.chars().all(|c| c.is_ascii_alphanumeric() || c == '_' || c == '-'),
-            "base64" => candidate.chars().all(|c| c.is_ascii_alphanumeric() || c == '+' || c == '/' || c == '=' || c == '_' || c == '-' || c == '.'),
+            "alphanum" => candidate
+                .chars()
+                .all(|c| c.is_ascii_alphanumeric() || c == '_' || c == '-'),
+            "base64" => candidate.chars().all(|c| {
+                c.is_ascii_alphanumeric()
+                    || c == '+'
+                    || c == '/'
+                    || c == '='
+                    || c == '_'
+                    || c == '-'
+                    || c == '.'
+            }),
             "hex" => candidate.chars().all(|c| c.is_ascii_hexdigit()),
             _ => true,
         };
@@ -259,13 +269,19 @@ mod tests {
             "eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiIxIn0.signature",
             "JWT_TOKEN",
         );
-        assert!(score > 0.5, "JWT structural score should be moderate-high, got {score}");
+        assert!(
+            score > 0.5,
+            "JWT structural score should be moderate-high, got {score}"
+        );
     }
 
     #[test]
     fn test_structural_aws_valid() {
         let score = score_structural("AKIA1234567890ABCDEF", "AWS_ACCESS_KEY");
-        assert!(score > 0.8, "AWS structural score should be high, got {score}");
+        assert!(
+            score > 0.8,
+            "AWS structural score should be high, got {score}"
+        );
     }
 
     #[test]
