@@ -61,6 +61,14 @@ pub fn read_file_content(
     let size = metadata.len();
 
     if size > max_size {
+        if std::env::var("VELKA_DEBUG").is_ok() {
+            eprintln!(
+                "[VELKA DEBUG] Skipping {} ({} bytes > {} max)",
+                path.display(),
+                size,
+                max_size
+            );
+        }
         return None;
     }
 

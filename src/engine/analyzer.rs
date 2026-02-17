@@ -280,6 +280,7 @@ pub fn analyze_line(
                 confidence: None,
                 confidence_factors: None,
                 confidence_level: None,
+                verification_detail: None,
             });
         }
     }
@@ -317,6 +318,7 @@ pub fn analyze_line(
                 confidence: None,
                 confidence_factors: None,
                 confidence_level: None,
+                verification_detail: None,
             });
         }
     }
@@ -353,6 +355,7 @@ pub fn analyze_line(
                 confidence: None,
                 confidence_factors: None,
                 confidence_level: None,
+                verification_detail: None,
             });
         }
     }

@@ -127,6 +127,54 @@ jobs:
             cd release-assets && sha256sum "$file" >> checksums-sha256.txt && cd ..
           done
 
+      - name: Generate installer scripts
+        run: |
+          TAG="${GITHUB_REF_NAME}"
+          REPO="wesllen-lima/velka"
+
+          # Shell installer (Linux/macOS)
+          cat > release-assets/velka-installer.sh << 'INSTALLER'
+          #!/bin/sh
+          set -eu
+          REPO="wesllen-lima/velka"
+          ARCH=$(uname -m)
+          OS=$(uname -s | tr '[:upper:]' '[:lower:]')
+          case "$OS-$ARCH" in
+            linux-x86_64)  ARTIFACT="velka-linux-x86_64" ;;
+            linux-aarch64) ARTIFACT="velka-linux-x86_64-musl" ;;
+            darwin-x86_64) ARTIFACT="velka-macos-x86_64" ;;
+            darwin-arm64)  ARTIFACT="velka-macos-aarch64" ;;
+            *) echo "Unsupported platform: $OS-$ARCH"; exit 1 ;;
+          esac
+          URL="https://github.com/${REPO}/releases/latest/download/${ARTIFACT}"
+          INSTALL_DIR="${INSTALL_DIR:-/usr/local/bin}"
+          echo "Downloading Velka for $OS/$ARCH..."
+          curl -sL "$URL" -o "${INSTALL_DIR}/velka"
+          chmod +x "${INSTALL_DIR}/velka"
+          echo "Velka installed to ${INSTALL_DIR}/velka"
+          velka --version
+          INSTALLER
+          chmod +x release-assets/velka-installer.sh
+
+          # PowerShell installer (Windows)
+          cat > release-assets/velka-installer.ps1 << 'PSINSTALLER'
+          $ErrorActionPreference = 'Stop'
+          $Repo = "wesllen-lima/velka"
+          $Artifact = "velka-windows-x86_64.exe"
+          $Url = "https://github.com/$Repo/releases/latest/download/$Artifact"
+          $InstallDir = "$env:LOCALAPPDATA\velka"
+          if (-not (Test-Path $InstallDir)) { New-Item -ItemType Directory -Path $InstallDir | Out-Null }
+          Write-Host "Downloading Velka for Windows..."
+          Invoke-WebRequest -Uri $Url -OutFile "$InstallDir\velka.exe"
+          $Path = [Environment]::GetEnvironmentVariable("Path", "User")
+          if ($Path -notlike "*$InstallDir*") {
+            [Environment]::SetEnvironmentVariable("Path", "$Path;$InstallDir", "User")
+            Write-Host "Added $InstallDir to PATH (restart terminal to use)"
+          }
+          Write-Host "Velka installed to $InstallDir\velka.exe"
+          & "$InstallDir\velka.exe" --version
+          PSINSTALLER
+
       - name: Extract changelog for this version
         id: changelog
         run: |

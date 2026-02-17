@@ -1,3 +1,26 @@
+//! Velka — a fast, privacy-first secret scanner for codebases.
+//!
+//! Detects leaked credentials, API keys, PII (CPF, CNPJ, SSN, IBAN, etc.)
+//! and sensitive tokens using regex rules, structural validation and an
+//! ML-enhanced confidence scoring ensemble.
+//!
+//! # Quick start
+//!
+//! ```no_run
+//! # fn main() -> velka::VelkaResult<()> {
+//! // Scan a directory with default config
+//! let findings = velka::scan(std::path::Path::new("."))?;
+//! for sin in &findings {
+//!     println!("{}: {} (line {})", sin.rule_id, sin.path, sin.line_number);
+//! }
+//!
+//! // Scan a string directly
+//! let hits = velka::scan_str("aws_key = \"AKIA0000000000000000\"")?;
+//! assert!(!hits.is_empty());
+//! # Ok(())
+//! # }
+//! ```
+
 pub mod config;
 pub mod domain;
 pub mod engine;
@@ -12,7 +35,7 @@ use std::sync::Arc;
 use crossbeam_channel::unbounded;
 
 pub use config::VelkaConfig;
-pub use domain::{ConfidenceLevel, Severity, Sin};
+pub use domain::{ConfidenceLevel, RiskLevel, Severity, Sin, VerificationDetail};
 pub use error::{Result as VelkaResult, VelkaError};
 pub use output::{OutputFormat, RedactionConfig};
 
@@ -124,6 +147,21 @@ pub fn scan_with_options(path: &Path, options: &ScanOptions) -> VelkaResult<Vec<
 
     let sins: Vec<Sin> = receiver.iter().collect();
     Ok(sins)
+}
+
+/// Scan a string directly for secrets (useful for testing and piped input).
+///
+/// # Example
+/// ```
+/// # fn main() -> velka::VelkaResult<()> {
+/// let sins = velka::scan_str(r#"api_key = "AKIA0000000000000000""#)?;
+/// assert!(!sins.is_empty());
+/// # Ok(())
+/// # }
+/// ```
+pub fn scan_str(content: &str) -> VelkaResult<Vec<Sin>> {
+    let config = VelkaConfig::default();
+    engine::scan_content(content, &config)
 }
 
 #[cfg(test)]

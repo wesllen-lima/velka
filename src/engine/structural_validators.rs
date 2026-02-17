@@ -71,6 +71,10 @@ pub fn validate_for_rule(snippet: &str, rule_id: &str) -> Option<ConfidenceLevel
         "BRAZILIAN_CPF" => Some(compliance::validate_cpf_confidence(snippet)),
         "BRAZILIAN_CNPJ" => Some(compliance::validate_cnpj_confidence(snippet)),
         "DSN_CREDENTIALS" => Some(compliance::validate_dsn_confidence(snippet)),
+        "NIF_PT" => Some(compliance::validate_nif_confidence(snippet)),
+        "DNI_ES" => Some(compliance::validate_dni_confidence(snippet)),
+        "SSN_US" => Some(compliance::validate_ssn_confidence(snippet)),
+        "IBAN" => Some(compliance::validate_iban_confidence(snippet)),
         _ => None,
     }
 }
