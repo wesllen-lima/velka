@@ -1,3 +1,10 @@
+//! Semantic analysis for obfuscated and concatenated secrets.
+//!
+//! Detects secrets hidden via Base64/hex encoding, string concatenation
+//! (JavaScript `+` operator) and suspicious variable name assignments.
+//! These checks run only in `--god-mode` or when semantic analysis is
+//! explicitly enabled.
+
 use regex::Regex;
 use std::sync::LazyLock;
 
@@ -171,6 +178,7 @@ pub fn analyze_concatenation(
                     confidence: None,
                     confidence_factors: None,
                     confidence_level: Some(ConfidenceLevel::Suspicious),
+                    verification_detail: None,
                 });
             }
         }
@@ -218,6 +226,7 @@ pub fn analyze_variable_names(
         confidence: None,
         confidence_factors: None,
         confidence_level: Some(ConfidenceLevel::Suspicious),
+        verification_detail: None,
     })
 }
 

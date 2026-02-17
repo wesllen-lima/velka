@@ -1,9 +1,12 @@
 mod analyzer;
+pub mod ast_analyzer;
+pub mod baseline;
 pub mod bloom;
+pub mod iac_analyzer;
 mod cache;
 mod complexity;
 pub mod compliance;
-pub mod dist;
+pub mod feedback;
 mod file_reader;
 mod honeytoken;
 mod incremental;
@@ -37,8 +40,13 @@ pub use incremental::{
 };
 pub use necromancer::scan_history;
 pub use rules::{CompiledCustomRule, DynamicRulesManager, RULES};
-pub use scanner::{investigate, investigate_with_progress, scan_content, scan_single_file};
+pub use ml_classifier::{classify_default, ClassificationResult, EnsembleWeights};
+pub use scanner::{
+    investigate, investigate_god_mode, investigate_with_mode, investigate_with_progress,
+    scan_content, scan_content_with_mode, scan_single_file, scan_single_file_with_mode, ScanMode,
+};
 
+pub use feedback::FeedbackStore;
 pub use migrate::{
     check_env_in_gitignore, check_env_tracked, format_migrate_report, run_migrate, MigrateReport,
 };

@@ -4,7 +4,7 @@ use sha2::{Digest, Sha256};
 use std::sync::LazyLock;
 use std::time::Duration;
 
-use crate::domain::{ConfidenceLevel, Sin};
+use crate::domain::{ConfidenceLevel, RiskLevel, Sin, VerificationDetail};
 use crate::engine::structural_validators;
 
 static AWS_KEY_PATTERN: LazyLock<Option<Regex>> =
@@ -33,22 +33,45 @@ static AWS_SECRET_RE: LazyLock<Option<Regex>> =
     LazyLock::new(|| Regex::new(r"[A-Za-z0-9/+=]{40}").ok());
 
 pub fn verify(sin: &mut Sin) {
-    let verified = match sin.rule_id.as_str() {
-        "AWS_ACCESS_KEY" => verify_aws(&sin.snippet, &sin.context),
-        "GITHUB_TOKEN" => verify_github_enhanced(&sin.snippet),
-        "STRIPE_SECRET" => verify_stripe(&sin.snippet),
-        "SENDGRID_API" => verify_sendgrid(&sin.snippet),
-        "SLACK_WEBHOOK" => verify_slack_webhook(&sin.snippet),
-        _ => None,
-    };
-
-    if let Some(true) = verified {
-        if sin.rule_id == "AWS_ACCESS_KEY" {
-            sin.description = format!("CRITICAL (Verified): {}", sin.description);
+    match sin.rule_id.as_str() {
+        "AWS_ACCESS_KEY" => {
+            let detail = verify_aws_rich(&sin.snippet, &sin.context);
+            if let Some(ref d) = detail {
+                sin.verified = Some(d.is_active);
+                if d.is_active {
+                    let identity = d.identity.as_deref().unwrap_or("unknown");
+                    sin.description =
+                        format!("CRITICAL (Verified) [{}] {}: {}", d.risk_level, identity, sin.description);
+                }
+            }
+            sin.verification_detail = detail;
         }
+        "GITHUB_TOKEN" => {
+            let detail = verify_github_rich(&sin.snippet);
+            if let Some(ref d) = detail {
+                sin.verified = Some(d.is_active);
+                if d.is_active {
+                    let identity = d.identity.as_deref().unwrap_or("unknown");
+                    sin.description = format!("Verified GitHub token ({}): {}", identity, sin.description);
+                }
+            }
+            sin.verification_detail = detail;
+        }
+        "STRIPE_SECRET" => {
+            let detail = verify_stripe_rich(&sin.snippet);
+            if let Some(ref d) = detail {
+                sin.verified = Some(d.is_active);
+            }
+            sin.verification_detail = detail;
+        }
+        "SENDGRID_API" => {
+            sin.verified = verify_sendgrid(&sin.snippet);
+        }
+        "SLACK_WEBHOOK" => {
+            sin.verified = verify_slack_webhook(&sin.snippet);
+        }
+        _ => {}
     }
-
-    sin.verified = verified;
 }
 
 fn hmac_sha256(key: &[u8], data: &[u8]) -> Vec<u8> {
@@ -63,13 +86,10 @@ fn sha256_hex(data: &str) -> String {
     hex::encode(hasher.finalize())
 }
 
-/// Verify AWS credentials via STS `GetCallerIdentity`.
-/// Looks for access key in snippet and secret key in context lines.
-fn verify_aws(snippet: &str, context: &[String]) -> Option<bool> {
+/// Rich AWS verification: returns identity, attached policies, and risk level.
+fn verify_aws_rich(snippet: &str, context: &[String]) -> Option<VerificationDetail> {
     let key_re = AWS_KEY_PATTERN.as_ref()?;
     let access_key = key_re.find(snippet)?.as_str();
-
-    // Search for secret key in context
     let secret_re = AWS_SECRET_RE.as_ref()?;
     let all_text = context.join("\n");
     let secret_key = secret_re.find(&all_text)?.as_str();
@@ -84,28 +104,22 @@ fn verify_aws(snippet: &str, context: &[String]) -> Option<bool> {
     let now = chrono::Utc::now();
     let datestamp = now.format("%Y%m%d").to_string();
     let amz_date = now.format("%Y%m%dT%H%M%SZ").to_string();
-
     let payload_hash = sha256_hex(body);
-    let canonical_headers = format!(
-        "content-type:application/x-www-form-urlencoded\nhost:{host}\nx-amz-date:{amz_date}\n"
-    );
+    let canonical_headers =
+        format!("content-type:application/x-www-form-urlencoded\nhost:{host}\nx-amz-date:{amz_date}\n");
     let signed_headers = "content-type;host;x-amz-date";
-
     let canonical_request =
         format!("{method}\n/\n\n{canonical_headers}\n{signed_headers}\n{payload_hash}");
-
     let credential_scope = format!("{datestamp}/{region}/{service}/aws4_request");
     let string_to_sign = format!(
         "AWS4-HMAC-SHA256\n{amz_date}\n{credential_scope}\n{}",
         sha256_hex(&canonical_request)
     );
-
     let k_date = hmac_sha256(format!("AWS4{secret_key}").as_bytes(), datestamp.as_bytes());
     let k_region = hmac_sha256(&k_date, region.as_bytes());
     let k_service = hmac_sha256(&k_region, service.as_bytes());
     let k_signing = hmac_sha256(&k_service, b"aws4_request");
     let signature = hex::encode(hmac_sha256(&k_signing, string_to_sign.as_bytes()));
-
     let auth_header = format!(
         "AWS4-HMAC-SHA256 Credential={access_key}/{credential_scope}, SignedHeaders={signed_headers}, Signature={signature}"
     );
@@ -120,33 +134,132 @@ fn verify_aws(snippet: &str, context: &[String]) -> Option<bool> {
         .send()
         .ok()?;
 
-    Some(resp.status().is_success())
+    let is_active = resp.status().is_success();
+    let body_text = resp.text().unwrap_or_default();
+
+    // Extract ARN and account from XML response
+    // <Arn>arn:aws:iam::123456789:user/ci-deploy</Arn>
+    // <Account>123456789</Account>
+    let arn_re = Regex::new(r"<Arn>([^<]+)</Arn>").ok()?;
+    let acct_re = Regex::new(r"<Account>([^<]+)</Account>").ok()?;
+    let identity = arn_re
+        .captures(&body_text)
+        .and_then(|c| c.get(1))
+        .map(|m| m.as_str().to_string());
+    let account = acct_re
+        .captures(&body_text)
+        .and_then(|c| c.get(1))
+        .map(|m| m.as_str().to_string());
+
+    // Determine risk level from identity string
+    // ARN patterns: user/*, role/*, assumed-role/*, root
+    let risk_level = if let Some(ref arn) = identity {
+        if arn.contains(":root") {
+            RiskLevel::Catastrophic
+        } else if arn.contains("Admin") || arn.contains("admin") || arn.contains("PowerUser") {
+            RiskLevel::Administrative
+        } else {
+            RiskLevel::ReadWrite
+        }
+    } else {
+        RiskLevel::ReadWrite
+    };
+
+    let mut permissions = Vec::new();
+    if let Some(acct) = account {
+        permissions.push(format!("account:{acct}"));
+    }
+
+    Some(VerificationDetail {
+        is_active,
+        identity,
+        permissions,
+        risk_level,
+    })
 }
 
-/// Enhanced GitHub token verification — also extracts scopes and user info.
-fn verify_github_enhanced(snippet: &str) -> Option<bool> {
+/// Rich GitHub token verification: extracts username and OAuth scopes.
+fn verify_github_rich(snippet: &str) -> Option<VerificationDetail> {
     let re = GITHUB_TOKEN_RE.as_ref()?;
     let token = re.find(snippet)?.as_str();
     let client = HTTP_CLIENT.as_ref()?;
+
     let resp = client
         .get("https://api.github.com/user")
         .header("Authorization", format!("Bearer {token}"))
         .send()
         .ok()?;
-    Some(resp.status().is_success())
+
+    let is_active = resp.status().is_success();
+
+    // Extract scopes from X-OAuth-Scopes header
+    let scopes: Vec<String> = resp
+        .headers()
+        .get("X-OAuth-Scopes")
+        .and_then(|v| v.to_str().ok())
+        .map(|s| s.split(',').map(|sc| sc.trim().to_string()).collect())
+        .unwrap_or_default();
+
+    // Parse user JSON for identity
+    let identity = if is_active {
+        resp.text().ok().and_then(|body| {
+            serde_json::from_str::<serde_json::Value>(&body)
+                .ok()
+                .and_then(|v| v["login"].as_str().map(String::from))
+        })
+    } else {
+        None
+    };
+
+    // Risk level from scopes
+    let risk_level = if scopes.iter().any(|s| s == "admin:org" || s == "delete_repo" || s == "admin:repo_hook") {
+        RiskLevel::Administrative
+    } else if scopes.iter().any(|s| s == "repo" || s == "write:org") {
+        RiskLevel::ReadWrite
+    } else if !scopes.is_empty() {
+        RiskLevel::ReadOnly
+    } else {
+        RiskLevel::ReadWrite // unknown — assume worst reasonable
+    };
+
+    Some(VerificationDetail {
+        is_active,
+        identity,
+        permissions: scopes,
+        risk_level,
+    })
 }
 
-fn verify_stripe(snippet: &str) -> Option<bool> {
+/// Rich Stripe verification: distinguishes live vs test keys.
+fn verify_stripe_rich(snippet: &str) -> Option<VerificationDetail> {
     let re = STRIPE_SECRET_RE.as_ref()?;
     let secret = re.find(snippet)?.as_str();
     let client = HTTP_CLIENT.as_ref()?;
+
     let resp = client
         .get("https://api.stripe.com/v1/balance")
         .basic_auth(secret, Some(""))
         .send()
         .ok()?;
-    Some(resp.status().is_success())
+
+    let is_active = resp.status().is_success();
+    let is_live = secret.contains("_live_");
+    let key_type = if is_live { "live" } else { "test" };
+
+    let risk_level = if is_live {
+        RiskLevel::Catastrophic
+    } else {
+        RiskLevel::ReadWrite
+    };
+
+    Some(VerificationDetail {
+        is_active,
+        identity: Some(format!("stripe:{key_type}")),
+        permissions: vec![format!("stripe/{key_type}")],
+        risk_level,
+    })
 }
+
 
 fn verify_sendgrid(snippet: &str) -> Option<bool> {
     let re = SENDGRID_API_RE.as_ref()?;
@@ -327,6 +440,7 @@ mod tests {
             confidence: None,
             confidence_factors: None,
             confidence_level: None,
+            verification_detail: None,
         }
     }
 

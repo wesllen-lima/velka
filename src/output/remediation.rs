@@ -117,6 +117,7 @@ mod tests {
             confidence: None,
             confidence_factors: None,
             confidence_level: None,
+            verification_detail: None,
         }
     }
 

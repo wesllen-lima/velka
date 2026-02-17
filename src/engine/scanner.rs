@@ -15,11 +15,38 @@ use crate::engine::cache::{CacheEntry, CachedMatch, ScanCache};
 use crate::engine::file_reader::{is_binary, read_file_content};
 use crate::engine::honeytoken;
 use crate::engine::rules::CompiledCustomRule;
+use crate::engine::ml_classifier;
+use crate::engine::ast_analyzer;
 use crate::engine::semantic;
 use crate::engine::verifier::{self, compute_confidence, enhance_confidence_with_context};
 use crate::utils::build_context;
+use crate::engine::bloom::BloomFilter;
+use crate::engine::feedback::FeedbackStore;
 use chrono::Utc;
 use regex::Regex;
+
+#[derive(Debug, Clone, Copy, Default)]
+pub struct ScanMode {
+    pub god_mode: bool,
+    pub semantic: bool,
+    pub bloom_dedup: bool,
+}
+
+impl ScanMode {
+    #[must_use]
+    pub fn god() -> Self {
+        Self {
+            god_mode: true,
+            semantic: true,
+            bloom_dedup: true,
+        }
+    }
+
+    #[must_use]
+    pub fn default_mode() -> Self {
+        Self::default()
+    }
+}
 
 #[derive(Debug, Clone, Copy)]
 struct IgnoreRange {
@@ -49,8 +76,21 @@ fn compute_ignore_ranges(lines: &[&str]) -> Vec<IgnoreRange> {
 }
 
 fn get_entropy_threshold(path: &Path, base: f32) -> f32 {
+    let file_name = path
+        .file_name()
+        .and_then(|n| n.to_str())
+        .unwrap_or("");
+
+    // Check compound extensions first (e.g. "bundle.min.js")
+    if file_name.ends_with(".min.js") || file_name.ends_with(".min.css") {
+        return base + 1.0;
+    }
+
     match path.extension().and_then(|e| e.to_str()) {
-        Some("js" | "min.js" | "min.css") => base + 0.5,
+        Some("lock") => base + 1.5,
+        Some("svg") => base + 0.8,
+        Some("js" | "test" | "spec") => base + 0.5,
+        Some("md") => base + 0.3,
         Some("env" | "config" | "properties" | "ini") => base - 0.3,
         Some("json" | "yaml" | "yml" | "toml") => base - 0.2,
         _ => base,
@@ -65,6 +105,19 @@ struct ScanFileParams<'a> {
     skip_minified: usize,
     skip_entropy_in_regex_context: bool,
     allowlist_regexes: Option<Arc<Vec<Regex>>>,
+    scan_mode: ScanMode,
+}
+
+fn enrich_with_ml(sin: &mut Sin) {
+    let ml_result = ml_classifier::classify_default(&sin.snippet, &sin.rule_id);
+    sin.confidence = Some(ml_result.score);
+    sin.confidence_factors = Some(
+        ml_result
+            .factors
+            .iter()
+            .map(|(k, v)| format!("{k}={v:.2}"))
+            .collect(),
+    );
 }
 
 fn scan_file_text(
@@ -115,44 +168,63 @@ fn scan_file_text(
             commit_hash.cloned(),
             &scan_cfg,
         ) {
+            // Sprint 11: suppress findings inside test functions, comments, docstrings
+            if ast_analyzer::should_filter_finding(path_str, &lines, line_idx) {
+                continue;
+            }
+            enrich_with_ml(&mut sin);
             enhance_confidence_with_context(&mut sin, &lines, line_idx);
             file_sins.push(sin);
-        } else if let Some(mut sin) = semantic::analyze_semantic(
-            line,
-            path_str,
-            line_num,
-            line_context,
-            commit_hash.cloned(),
-            &scan_cfg,
-        ) {
-            enhance_confidence_with_context(&mut sin, &lines, line_idx);
-            file_sins.push(sin);
-        } else if let Some(sin) =
-            semantic::analyze_variable_names(line, path_str, line_num, line_context)
-        {
-            file_sins.push(sin);
+        } else if params.scan_mode.god_mode || params.scan_mode.semantic {
+            if let Some(mut sin) = semantic::analyze_semantic(
+                line,
+                path_str,
+                line_num,
+                line_context,
+                commit_hash.cloned(),
+                &scan_cfg,
+            ) {
+                enrich_with_ml(&mut sin);
+                enhance_confidence_with_context(&mut sin, &lines, line_idx);
+                file_sins.push(sin);
+            } else if let Some(mut sin) =
+                semantic::analyze_variable_names(line, path_str, line_num, line_context)
+            {
+                enrich_with_ml(&mut sin);
+                file_sins.push(sin);
+            }
         }
     }
 
-    // File-level concatenation analysis
-    let concat_sins = semantic::analyze_concatenation(
-        &lines,
-        path_str,
-        &AnalyzeLineConfig {
-            entropy_threshold: params.entropy_threshold,
-            disabled_rules: params.disabled_rules,
-            whitelist: params.whitelist,
-            custom_rules: params.custom_rules,
-            skip_entropy_in_regex_context: params.skip_entropy_in_regex_context,
-            allowlist_regexes: params.allowlist_regexes.as_ref().map(|v| v.as_slice()),
-        },
-    );
-    file_sins.extend(concat_sins);
+    // File-level concatenation analysis (only in god_mode or semantic mode)
+    if params.scan_mode.god_mode || params.scan_mode.semantic {
+        let concat_sins = semantic::analyze_concatenation(
+            &lines,
+            path_str,
+            &AnalyzeLineConfig {
+                entropy_threshold: params.entropy_threshold,
+                disabled_rules: params.disabled_rules,
+                whitelist: params.whitelist,
+                custom_rules: params.custom_rules,
+                skip_entropy_in_regex_context: params.skip_entropy_in_regex_context,
+                allowlist_regexes: params.allowlist_regexes.as_ref().map(|v| v.as_slice()),
+            },
+        );
+        file_sins.extend(concat_sins);
+    }
 
     file_sins
 }
 
 pub fn scan_content(content: &str, config: &VelkaConfig) -> Result<Vec<Sin>> {
+    scan_content_with_mode(content, config, ScanMode::default())
+}
+
+pub fn scan_content_with_mode(
+    content: &str,
+    config: &VelkaConfig,
+    scan_mode: ScanMode,
+) -> Result<Vec<Sin>> {
     let custom_rules = config.compile_custom_rules()?;
     let custom_rules: Arc<Vec<CompiledCustomRule>> = Arc::new(custom_rules);
     let disabled_rules: Vec<String> = config.rules.disable.clone();
@@ -168,6 +240,7 @@ pub fn scan_content(content: &str, config: &VelkaConfig) -> Result<Vec<Sin>> {
         skip_minified: config.scan.skip_minified_threshold,
         skip_entropy_in_regex_context: config.scan.entropy_skip_regex_context,
         allowlist_regexes,
+        scan_mode,
     };
     let path_str = "<stdin>";
     let dummy_path = Path::new("<stdin>");
@@ -175,6 +248,11 @@ pub fn scan_content(content: &str, config: &VelkaConfig) -> Result<Vec<Sin>> {
     for sin in &mut sins {
         compute_confidence(sin);
     }
+
+    if let Ok(fb) = FeedbackStore::load() {
+        sins.retain(|sin| !fb.is_known_false_positive(sin));
+    }
+
     Ok(sins)
 }
 
@@ -182,11 +260,48 @@ pub fn investigate(path: &Path, config: &VelkaConfig, sender: &Sender<Sin>) -> R
     investigate_with_progress(path, config, sender, false)
 }
 
+pub fn investigate_god_mode(
+    path: &Path,
+    config: &VelkaConfig,
+    sender: &Sender<Sin>,
+    show_progress: bool,
+) -> Result<()> {
+    investigate_with_mode(path, config, sender, show_progress, ScanMode::god())
+}
+
+pub fn investigate_with_mode(
+    path: &Path,
+    config: &VelkaConfig,
+    sender: &Sender<Sin>,
+    show_progress: bool,
+    scan_mode: ScanMode,
+) -> Result<()> {
+    let use_bloom = scan_mode.bloom_dedup;
+    let bloom: Option<Arc<Mutex<BloomFilter>>> = if use_bloom {
+        Some(Arc::new(Mutex::new(BloomFilter::new())))
+    } else {
+        None
+    };
+
+    investigate_internal(path, config, sender, show_progress, scan_mode, bloom)
+}
+
+
 pub fn scan_single_file(
     file_path: &Path,
     config: &VelkaConfig,
     sender: &Sender<Sin>,
     cache: Option<&Arc<std::sync::RwLock<ScanCache>>>,
+) -> Result<()> {
+    scan_single_file_with_mode(file_path, config, sender, cache, ScanMode::default())
+}
+
+pub fn scan_single_file_with_mode(
+    file_path: &Path,
+    config: &VelkaConfig,
+    sender: &Sender<Sin>,
+    cache: Option<&Arc<std::sync::RwLock<ScanCache>>>,
+    scan_mode: ScanMode,
 ) -> Result<()> {
     let custom_rules = config.compile_custom_rules()?;
     let custom_rules: Arc<Vec<CompiledCustomRule>> = Arc::new(custom_rules);
@@ -253,6 +368,7 @@ pub fn scan_single_file(
                         confidence: None,
                         confidence_factors: None,
                         confidence_level: None,
+                        verification_detail: None,
                     };
 
                     if sender.send(sin).is_err() {
@@ -283,6 +399,7 @@ pub fn scan_single_file(
         skip_minified,
         skip_entropy_in_regex_context: config.scan.entropy_skip_regex_context,
         allowlist_regexes,
+        scan_mode,
     };
     let mut file_sins = scan_file_text(file_path, &path_str, text, &params, None);
 
@@ -342,6 +459,21 @@ pub fn investigate_with_progress(
     sender: &Sender<Sin>,
     show_progress: bool,
 ) -> Result<()> {
+    investigate_internal(path, config, sender, show_progress, ScanMode::default(), None)
+}
+
+#[allow(clippy::needless_pass_by_value)]
+fn investigate_internal(
+    path: &Path,
+    config: &VelkaConfig,
+    sender: &Sender<Sin>,
+    show_progress: bool,
+    scan_mode: ScanMode,
+    bloom: Option<Arc<Mutex<BloomFilter>>>,
+) -> Result<()> {
+    let feedback = FeedbackStore::load().ok();
+    let feedback = feedback.map(Arc::new);
+
     let custom_rules = config.compile_custom_rules()?;
     let custom_rules: Arc<Vec<CompiledCustomRule>> = Arc::new(custom_rules);
 
@@ -428,6 +560,9 @@ pub fn investigate_with_progress(
         let counter = Arc::clone(&progress_counter);
         let do_verify = verify_secrets;
         let step = progress_step;
+        let mode = scan_mode;
+        let bloom_clone = bloom.clone();
+        let feedback_clone = feedback.clone();
 
         Box::new(move |entry_result| {
             let Ok(entry) = entry_result else {
@@ -490,6 +625,7 @@ pub fn investigate_with_progress(
                                 confidence: None,
                                 confidence_factors: None,
                                 confidence_level: None,
+                                verification_detail: None,
                             };
 
                             if tx.send(sin).is_err() {
@@ -517,6 +653,7 @@ pub fn investigate_with_progress(
                 skip_minified: minified_limit,
                 skip_entropy_in_regex_context: true,
                 allowlist_regexes: allowlist_regexes.clone(),
+                scan_mode: mode,
             };
             let mut file_sins = scan_file_text(file_path, &path_str, text, &params, None);
 
@@ -529,6 +666,26 @@ pub fn investigate_with_progress(
                 for sin in &mut file_sins {
                     compute_confidence(sin);
                 }
+            }
+
+            // Bloom filter dedup (god_mode)
+            if let Some(ref bloom_arc) = bloom_clone {
+                if let Ok(mut bf) = bloom_arc.lock() {
+                    file_sins.retain(|sin| {
+                        let bytes = sin.snippet.as_bytes();
+                        if bf.might_contain(bytes) {
+                            false // duplicate
+                        } else {
+                            bf.insert(bytes);
+                            true
+                        }
+                    });
+                }
+            }
+
+            // Filter known false positives
+            if let Some(ref fb) = feedback_clone {
+                file_sins.retain(|sin| !fb.is_known_false_positive(sin));
             }
 
             if cache_clone.as_ref().is_some() {

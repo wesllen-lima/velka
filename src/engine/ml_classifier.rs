@@ -1,3 +1,13 @@
+//! ML-enhanced ensemble classifier for secret candidate scoring.
+//!
+//! Combines four signals — Shannon entropy, character frequency distribution,
+//! structural validation (prefix, length, charset) and length heuristics —
+//! into a single confidence score in `[0.0, 1.0]`.
+//!
+//! Use [`classify_default`] for the common case with default weights,
+//! or [`classify`] to supply custom [`EnsembleWeights`].
+
+use crate::engine::rules::RULES;
 use crate::utils::calculate_entropy;
 
 /// Result of the ML-enhanced classification ensemble.
@@ -133,110 +143,58 @@ fn score_char_frequency(candidate: &str) -> f32 {
 }
 
 /// Structural validation scoring.
-/// Known formats (JWT, AWS, GitHub tokens) get higher scores when they match expected structure.
+/// Uses rule metadata (prefix, length, charset) for generic scoring.
+/// Falls back to 0.5 for rules without metadata.
 fn score_structural(candidate: &str, rule_id: &str) -> f32 {
-    match rule_id {
-        "JWT_TOKEN" | "SUPABASE_ANON_KEY" => {
-            // JWT: header.payload.signature (3 base64url parts)
-            let parts: Vec<&str> = candidate.split('.').collect();
-            if parts.len() == 3
-                && parts[0].starts_with("eyJ")
-                && parts[1].starts_with("eyJ")
-                && !parts[2].is_empty()
-            {
-                1.0
-            } else if parts.len() == 3 {
-                0.6
-            } else {
-                0.1
-            }
+    let Some(rule) = RULES.iter().find(|r| r.id == rule_id) else {
+        return 0.5;
+    };
+
+    let mut score = 0.5f32;
+
+    if let Some(prefix) = rule.required_prefix {
+        if candidate.starts_with(prefix) {
+            score += 0.25;
+        } else {
+            score -= 0.3;
         }
-        "AWS_ACCESS_KEY" => {
-            // Must be exactly AKIA followed by 16 uppercase alphanumeric chars
-            if candidate.starts_with("AKIA")
-                && candidate.len() == 20
-                && candidate[4..]
-                    .chars()
-                    .all(|c| c.is_ascii_uppercase() || c.is_ascii_digit())
-            {
-                1.0
-            } else {
-                0.2
-            }
-        }
-        "AWS_SECRET_KEY" => {
-            // 40 chars of mixed case alphanumeric + /+=
-            if candidate.len() == 40
-                && candidate
-                    .chars()
-                    .all(|c| c.is_ascii_alphanumeric() || c == '/' || c == '+' || c == '=')
-            {
-                0.95
-            } else {
-                0.3
-            }
-        }
-        "GITHUB_TOKEN" => {
-            // ghp_, gho_, ghu_, ghs_, ghr_ prefix + 36+ alphanum
-            if (candidate.starts_with("ghp_")
-                || candidate.starts_with("gho_")
-                || candidate.starts_with("ghu_")
-                || candidate.starts_with("ghs_")
-                || candidate.starts_with("ghr_"))
-                && candidate.len() >= 40
-            {
-                1.0
-            } else {
-                0.2
-            }
-        }
-        "STRIPE_SECRET" => {
-            if candidate.starts_with("sk_live_") && candidate.len() >= 32 {
-                1.0
-            } else if candidate.starts_with("sk_test_") {
-                0.3 // test keys are less critical
-            } else {
-                0.2
-            }
-        }
-        "OPENAI_API_KEY" => {
-            if candidate.starts_with("sk-") && candidate.len() >= 48 {
-                0.95
-            } else {
-                0.2
-            }
-        }
-        "PRIVATE_KEY" => {
-            if candidate.contains("-----BEGIN") && candidate.contains("PRIVATE KEY-----") {
-                1.0
-            } else {
-                0.1
-            }
-        }
-        // Generic rules benefit less from structural validation
-        "HIGH_ENTROPY" | "GENERIC_API_KEY" | "GENERIC_SECRET" => 0.5,
-        // Default: moderate structural confidence for known patterns
-        _ => 0.6,
     }
+
+    if let Some((min, max)) = rule.expected_len {
+        let len = candidate.len();
+        if len >= min && len <= max {
+            score += 0.2;
+        } else {
+            score -= 0.2;
+        }
+    }
+
+    if let Some(charset) = rule.charset {
+        let matches_charset = match charset {
+            "alphanum" => candidate.chars().all(|c| c.is_ascii_alphanumeric() || c == '_' || c == '-'),
+            "base64" => candidate.chars().all(|c| c.is_ascii_alphanumeric() || c == '+' || c == '/' || c == '=' || c == '_' || c == '-' || c == '.'),
+            "hex" => candidate.chars().all(|c| c.is_ascii_hexdigit()),
+            _ => true,
+        };
+        if matches_charset {
+            score += 0.1;
+        } else {
+            score -= 0.1;
+        }
+    }
+
+    score.clamp(0.0, 1.0)
 }
 
-/// Length-based scoring. Secrets tend to have characteristic lengths per type.
+/// Length-based scoring. Uses rule metadata for expected length ranges.
 fn score_length(candidate: &str, rule_id: &str) -> f32 {
     let len = candidate.len();
 
-    let (ideal_min, ideal_max) = match rule_id {
-        "AWS_ACCESS_KEY" => (20, 20),
-        "AWS_SECRET_KEY" => (40, 40),
-        "GITHUB_TOKEN" => (40, 100),
-        "STRIPE_SECRET" => (32, 100),
-        "OPENAI_API_KEY" => (48, 60),
-        "SENDGRID_API" => (69, 69),
-        "NPM_TOKEN" => (36, 36),
-        "PRIVATE_KEY" => (100, 5000),
-        "JWT_TOKEN" | "SUPABASE_ANON_KEY" => (50, 2000),
-        "HIGH_ENTROPY" => (16, 200),
-        _ => (16, 500),
-    };
+    let (ideal_min, ideal_max) = RULES
+        .iter()
+        .find(|r| r.id == rule_id)
+        .and_then(|r| r.expected_len)
+        .unwrap_or((16, 500));
 
     if len >= ideal_min && len <= ideal_max {
         1.0
@@ -244,7 +202,6 @@ fn score_length(candidate: &str, rule_id: &str) -> f32 {
         let ratio = len as f32 / ideal_min as f32;
         ratio.clamp(0.0, 1.0)
     } else {
-        // Over ideal_max - mild penalty
         let over = (len - ideal_max) as f32 / ideal_max as f32;
         (1.0 - over * 0.5).clamp(0.1, 1.0)
     }
@@ -302,13 +259,13 @@ mod tests {
             "eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiIxIn0.signature",
             "JWT_TOKEN",
         );
-        assert!((score - 1.0).abs() < f32::EPSILON);
+        assert!(score > 0.5, "JWT structural score should be moderate-high, got {score}");
     }
 
     #[test]
     fn test_structural_aws_valid() {
         let score = score_structural("AKIA1234567890ABCDEF", "AWS_ACCESS_KEY");
-        assert!((score - 1.0).abs() < f32::EPSILON);
+        assert!(score > 0.8, "AWS structural score should be high, got {score}");
     }
 
     #[test]
