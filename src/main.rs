@@ -124,10 +124,18 @@ struct ScanArgs {
     profile: Option<String>,
 
     // Scan mode group (mutually exclusive)
-    #[arg(long, group = "scan_source", help = "Only scan changed files (git diff)")]
+    #[arg(
+        long,
+        group = "scan_source",
+        help = "Only scan changed files (git diff)"
+    )]
     diff: bool,
 
-    #[arg(long, group = "scan_source", help = "Only scan staged files (pre-commit mode)")]
+    #[arg(
+        long,
+        group = "scan_source",
+        help = "Only scan staged files (pre-commit mode)"
+    )]
     staged: bool,
 
     #[arg(long, help = "Show progress bar")]
@@ -162,7 +170,8 @@ struct ScanArgs {
     yes: bool,
 
     #[arg(
-        long, group = "scan_source",
+        long,
+        group = "scan_source",
         help = "Incremental scan: only files changed since <commit/tag/branch>"
     )]
     since: Option<String>,

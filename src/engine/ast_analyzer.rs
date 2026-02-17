@@ -14,17 +14,15 @@ use regex::Regex;
 
 // ── Compiled patterns ──────────────────────────────────────────────────────
 
-static PYTHON_DEF: LazyLock<Regex> = LazyLock::new(|| {
-    Regex::new(r"^[ \t]*(?:async[ \t]+)?def[ \t]+(\w+)").unwrap()
-});
+static PYTHON_DEF: LazyLock<Regex> =
+    LazyLock::new(|| Regex::new(r"^[ \t]*(?:async[ \t]+)?def[ \t]+(\w+)").unwrap());
 
 static RUST_FN: LazyLock<Regex> = LazyLock::new(|| {
     Regex::new(r"^[ \t]*(?:pub(?:\([^)]*\))?[ \t]+)?(?:async[ \t]+)?fn[ \t]+\w+").unwrap()
 });
 
-static RUST_TEST_ATTR: LazyLock<Regex> = LazyLock::new(|| {
-    Regex::new(r"^[ \t]*#\s*\[(?:tokio::)?test(?:[ \t]*\]|,)").unwrap()
-});
+static RUST_TEST_ATTR: LazyLock<Regex> =
+    LazyLock::new(|| Regex::new(r"^[ \t]*#\s*\[(?:tokio::)?test(?:[ \t]*\]|,)").unwrap());
 
 static JS_TEST_CALL: LazyLock<Regex> = LazyLock::new(|| {
     Regex::new(
@@ -33,9 +31,8 @@ static JS_TEST_CALL: LazyLock<Regex> = LazyLock::new(|| {
     .unwrap()
 });
 
-static GO_TEST_FN: LazyLock<Regex> = LazyLock::new(|| {
-    Regex::new(r"^func[ \t]+Test\w*[ \t]*\(").unwrap()
-});
+static GO_TEST_FN: LazyLock<Regex> =
+    LazyLock::new(|| Regex::new(r"^func[ \t]+Test\w*[ \t]*\(").unwrap());
 
 static JAVA_TEST_ANNOTATION: LazyLock<Regex> = LazyLock::new(|| {
     Regex::new(r"^[ \t]*@(?:Test|Before|After|BeforeClass|AfterClass|BeforeEach|AfterEach|ParameterizedTest)")
@@ -47,11 +44,9 @@ static RUBY_TEST_METHOD: LazyLock<Regex> = LazyLock::new(|| {
         .unwrap()
 });
 
-static PYTHON_TRIPLE_DOUBLE: LazyLock<Regex> =
-    LazyLock::new(|| Regex::new(r#"""""#).unwrap());
+static PYTHON_TRIPLE_DOUBLE: LazyLock<Regex> = LazyLock::new(|| Regex::new(r#"""""#).unwrap());
 
-static PYTHON_TRIPLE_SINGLE: LazyLock<Regex> =
-    LazyLock::new(|| Regex::new(r"'''").unwrap());
+static PYTHON_TRIPLE_SINGLE: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"'''").unwrap());
 
 // ── Public API ─────────────────────────────────────────────────────────────
 
@@ -144,14 +139,16 @@ fn is_in_comment(lines: &[&str], line_idx: usize, ext: &str) -> bool {
         "py" | "rb" | "sh" | "bash" | "zsh" | "yaml" | "yml" | "toml" | "r" => {
             trimmed.starts_with('#')
         }
-        "rs" | "js" | "ts" | "jsx" | "tsx" | "mjs" | "cjs" | "go" | "java" | "kt" | "cs"
-        | "c" | "cpp" | "h" | "hpp" | "swift" | "scala" => {
+        "rs" | "js" | "ts" | "jsx" | "tsx" | "mjs" | "cjs" | "go" | "java" | "kt" | "cs" | "c"
+        | "cpp" | "h" | "hpp" | "swift" | "scala" => {
             if trimmed.starts_with("//") {
                 return true;
             }
             is_in_block_comment(lines, line_idx)
         }
-        "html" | "xml" | "svg" => trimmed.starts_with("<!--") || is_in_html_comment(lines, line_idx),
+        "html" | "xml" | "svg" => {
+            trimmed.starts_with("<!--") || is_in_html_comment(lines, line_idx)
+        }
         _ => trimmed.starts_with('#') || trimmed.starts_with("//"),
     }
 }
@@ -180,7 +177,8 @@ fn is_in_block_comment(lines: &[&str], line_idx: usize) -> bool {
         if i == line_idx {
             // Also treat lines that start with ` * ` (JSDoc-style) as inside block comment
             let trimmed = line.trim_start();
-            if depth > 0 || trimmed.starts_with("* ") || trimmed == "*" || trimmed.starts_with("*/") {
+            if depth > 0 || trimmed.starts_with("* ") || trimmed == "*" || trimmed.starts_with("*/")
+            {
                 return depth > 0 || trimmed.starts_with("* ") || trimmed == "*";
             }
         }
@@ -560,10 +558,7 @@ mod tests {
 
     #[test]
     fn test_python_non_test_fn_not_filtered() {
-        let lines = vec![
-            "def get_key():",
-            "    return \"AKIA1234567890ABCDEF\"",
-        ];
+        let lines = vec!["def get_key():", "    return \"AKIA1234567890ABCDEF\""];
         assert!(!is_in_python_test_fn(&lines, 1));
     }
 
@@ -609,10 +604,7 @@ mod tests {
 
     #[test]
     fn test_filter_python_test_fn() {
-        let lines = vec![
-            "def test_auth():",
-            "    key = \"AKIA1234567890ABCDEF\"",
-        ];
+        let lines = vec!["def test_auth():", "    key = \"AKIA1234567890ABCDEF\""];
         assert!(should_filter_finding("src/auth.py", &lines, 1));
     }
 

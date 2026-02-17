@@ -235,7 +235,10 @@ pub fn validate_nif_confidence(snippet: &str) -> ConfidenceLevel {
 pub fn validate_dni(dni: &str) -> bool {
     const TABLE: &[u8] = b"TRWAGMYFPDXBNJZSQVHLCKE";
 
-    let clean: String = dni.chars().filter(|c| !c.is_whitespace() && *c != '-').collect();
+    let clean: String = dni
+        .chars()
+        .filter(|c| !c.is_whitespace() && *c != '-')
+        .collect();
 
     if !clean.is_ascii() || clean.len() != 9 {
         return false;

@@ -11,8 +11,8 @@ use velka::domain::{Severity, Sin};
 use velka::engine::{
     analyze_complexity, generate_all, get_changed_files, get_changed_files_since,
     get_diff_line_ranges_since, get_staged_files, inject_to_file, inject_to_readme,
-    investigate_with_mode, scan_content, scan_history,
-    scan_single_file_with_mode, DynamicRulesManager, ScanCache, ScanMode,
+    investigate_with_mode, scan_content, scan_history, scan_single_file_with_mode,
+    DynamicRulesManager, ScanCache, ScanMode,
 };
 use velka::output::{format_output, OutputFormat, RedactionConfig};
 

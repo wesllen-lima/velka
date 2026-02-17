@@ -2,13 +2,13 @@ mod analyzer;
 pub mod ast_analyzer;
 pub mod baseline;
 pub mod bloom;
-pub mod iac_analyzer;
 mod cache;
 mod complexity;
 pub mod compliance;
 pub mod feedback;
 mod file_reader;
 mod honeytoken;
+pub mod iac_analyzer;
 mod incremental;
 pub mod k8s;
 mod known_examples;
@@ -38,9 +38,9 @@ pub use honeytoken::{
 pub use incremental::{
     get_changed_files, get_changed_files_since, get_diff_line_ranges_since, get_staged_files,
 };
+pub use ml_classifier::{classify_default, ClassificationResult, EnsembleWeights};
 pub use necromancer::scan_history;
 pub use rules::{CompiledCustomRule, DynamicRulesManager, RULES};
-pub use ml_classifier::{classify_default, ClassificationResult, EnsembleWeights};
 pub use scanner::{
     investigate, investigate_god_mode, investigate_with_mode, investigate_with_progress,
     scan_content, scan_content_with_mode, scan_single_file, scan_single_file_with_mode, ScanMode,
