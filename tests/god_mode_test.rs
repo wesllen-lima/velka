@@ -39,7 +39,7 @@ fn test_base64_encoded_aws_key_detected() {
 
 #[test]
 fn test_concatenated_secret_detected() {
-    let lines = vec![r#"let key = "AKIA12345678" + "90ABCDEFGH";"#];
+    let lines = [r#"let key = "AKIA12345678" + "90ABCDEFGH";"#];
     let line_refs: Vec<&str> = lines.iter().map(|s| &**s).collect();
     let cfg = default_scan_cfg();
     let results = analyze_concatenation(&line_refs, "app.js", &cfg);

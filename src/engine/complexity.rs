@@ -218,14 +218,15 @@ mod tests {
     }
 
     #[test]
+    #[allow(clippy::format_push_string)]
     fn test_analyze_complexity_detects_complex_function() {
         let tmp = tempfile::TempDir::new().unwrap();
         let path = tmp.path().join("complex.rs");
         // Build a function with complexity > 15
         let mut code = String::from("fn complex_function() {\n");
         for i in 0..20 {
-            code.push_str(&format!("    if x_{} > 0 {{\n", i));
-            code.push_str(&format!("        for j in 0..{} {{\n", i));
+            code.push_str(&format!("    if x_{i} > 0 {{\n"));
+            code.push_str(&format!("        for j in 0..{i} {{\n"));
             code.push_str("            println!(\"nested\");\n");
             code.push_str("        }\n");
             code.push_str("    }\n");

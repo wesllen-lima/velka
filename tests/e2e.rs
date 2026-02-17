@@ -16,12 +16,12 @@ use velka::{ConfidenceLevel, VelkaConfig};
 fn e2e_detect_classify_quarantine_pipeline() {
     let temp = TempDir::new().unwrap();
     let secret_file = temp.path().join("config.env");
-    let secret_content = r#"AWS_ACCESS_KEY_ID=AKIA1234567890ABCDEF
+    let secret_content = r"AWS_ACCESS_KEY_ID=AKIA1234567890ABCDEF
 DB_HOST=localhost
 DB_PORT=5432
 GITHUB_TOKEN=ghp_aBcDeFgHiJkLmNoPqRsTuVwXyZ1234567890
 CLEAN_VAR=hello_world
-"#;
+";
     fs::write(&secret_file, secret_content).unwrap();
 
     // --- STEP 1: Detection ---
@@ -123,7 +123,7 @@ CLEAN_VAR=hello_world
     );
 }
 
-/// Test: scan_content detects multiple secret types in a single content block
+/// Test: `scan_content` detects multiple secret types in a single content block
 #[test]
 fn e2e_multi_secret_detection() {
     let config = VelkaConfig::default();
@@ -132,10 +132,9 @@ fn e2e_multi_secret_detection() {
         r#"
 const AWS_KEY = "AKIA9876543210FEDCBA";
 const GH_TOKEN = "ghp_xYzAbCdEfGhIjKlMnOpQrStUvWxYz12345678";
-const STRIPE = "{}";
+const STRIPE = "{fake_stripe}";
 const GOOGLE = "AIzaSyA1234567890abcdefghijklmnopqrstu";
-"#,
-        fake_stripe
+"#
     );
 
     let sins = scan_content(&content, &config).unwrap();
@@ -143,18 +142,15 @@ const GOOGLE = "AIzaSyA1234567890abcdefghijklmnopqrstu";
 
     assert!(
         rule_ids.contains(&"AWS_ACCESS_KEY"),
-        "AWS key not found in {:?}",
-        rule_ids
+        "AWS key not found in {rule_ids:?}"
     );
     assert!(
         rule_ids.contains(&"GITHUB_TOKEN"),
-        "GitHub token not found in {:?}",
-        rule_ids
+        "GitHub token not found in {rule_ids:?}"
     );
     assert!(
         rule_ids.contains(&"STRIPE_SECRET"),
-        "Stripe key not found in {:?}",
-        rule_ids
+        "Stripe key not found in {rule_ids:?}"
     );
 }
 
@@ -229,7 +225,7 @@ fn e2e_honeytoken_skipped() {
     assert!(sins.is_empty(), "Honeytoken-marked lines should be skipped");
 }
 
-/// Test: Full pipeline from regex match → structural validation → ConfidenceLevel assignment
+/// Test: Full pipeline from regex match → structural validation → `ConfidenceLevel` assignment
 #[test]
 fn e2e_confidence_scoring_pipeline_aws() {
     let temp = TempDir::new().unwrap();
@@ -267,7 +263,7 @@ fn e2e_confidence_scoring_pipeline_aws() {
 fn e2e_confidence_scoring_stripe_test_key() {
     let config = VelkaConfig::default();
     let fake_test_stripe = format!("sk_test_{}", "a".repeat(24));
-    let content = format!(r#"STRIPE_KEY="{}""#, fake_test_stripe);
+    let content = format!(r#"STRIPE_KEY="{fake_test_stripe}""#);
 
     let sins = scan_content(&content, &config).unwrap();
     let stripe = sins.iter().find(|s| s.rule_id == "STRIPE_SECRET");
@@ -296,7 +292,7 @@ fn e2e_confidence_scoring_stripe_test_key() {
 fn e2e_confidence_scoring_stripe_live_key() {
     let config = VelkaConfig::default();
     let fake_live_stripe = format!("sk_live_{}", "b".repeat(24));
-    let content = format!(r#"STRIPE_KEY="{}""#, fake_live_stripe);
+    let content = format!(r#"STRIPE_KEY="{fake_live_stripe}""#);
 
     let sins = scan_content(&content, &config).unwrap();
     let stripe = sins.iter().find(|s| s.rule_id == "STRIPE_SECRET");
@@ -324,7 +320,7 @@ fn e2e_zero_leak_policy_type_safety() {
     assert_eq!(floored, ConfidenceLevel::Critical);
 }
 
-/// Test: ML ensemble influences ConfidenceLevel derivation
+/// Test: ML ensemble influences `ConfidenceLevel` derivation
 #[test]
 fn e2e_ml_ensemble_influences_confidence_level() {
     // AWS key with valid structure → ML should give high score → Critical

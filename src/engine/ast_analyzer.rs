@@ -95,7 +95,7 @@ pub fn analyze_scope(path: &str, lines: &[&str], line_idx: usize) -> ScopeContex
 
 // ── Test file detection ────────────────────────────────────────────────────
 
-fn is_test_file(path: &str) -> bool {
+pub(crate) fn is_test_file(path: &str) -> bool {
     let p = path.replace('\\', "/");
     let lower = p.to_lowercase();
 

@@ -268,7 +268,7 @@ spec:
 
     #[test]
     fn test_scan_clean_manifest() {
-        let yaml = r#"
+        let yaml = r"
 apiVersion: v1
 kind: Pod
 metadata:
@@ -277,7 +277,7 @@ spec:
   containers:
   - name: app
     image: nginx:latest
-"#;
+";
         let sins = scan_k8s_manifest(yaml).unwrap();
         assert!(sins.is_empty());
     }

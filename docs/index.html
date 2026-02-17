@@ -514,6 +514,66 @@
             margin: 0 auto 56px;
         }
 
+        /* ===== HAMBURGER ===== */
+        .hamburger {
+            display: none;
+            flex-direction: column;
+            gap: 5px;
+            cursor: pointer;
+            padding: 4px;
+            background: none;
+            border: none;
+            z-index: 200;
+        }
+        .hamburger span {
+            display: block;
+            width: 22px;
+            height: 2px;
+            background: var(--text-primary);
+            border-radius: 2px;
+            transition: transform 0.3s ease, opacity 0.3s ease;
+        }
+        .hamburger.open span:nth-child(1) { transform: translateY(7px) rotate(45deg); }
+        .hamburger.open span:nth-child(2) { opacity: 0; }
+        .hamburger.open span:nth-child(3) { transform: translateY(-7px) rotate(-45deg); }
+
+        .mobile-nav {
+            display: none;
+            position: fixed;
+            top: 64px;
+            left: 0;
+            right: 0;
+            background: rgba(13, 17, 23, 0.98);
+            backdrop-filter: blur(16px);
+            border-bottom: 1px solid var(--border);
+            padding: 16px 24px;
+            z-index: 99;
+            flex-direction: column;
+            gap: 0;
+        }
+        .mobile-nav.open { display: flex; }
+        .mobile-nav a {
+            padding: 14px 0;
+            font-size: 15px;
+            color: var(--text-secondary);
+            border-bottom: 1px solid var(--border);
+            transition: color 0.2s;
+        }
+        .mobile-nav a:last-child { border-bottom: none; }
+        .mobile-nav a:hover { color: var(--text-primary); }
+
+        /* ===== INSTALL BTN MOBILE ===== */
+        @media (max-width: 480px) {
+            .install-btn {
+                flex-wrap: wrap;
+                justify-content: center;
+                font-size: 14px;
+                padding: 14px 20px;
+                max-width: 100%;
+            }
+            .install-btn .copy-hint { display: none; }
+        }
+
         /* ===== RESPONSIVE ===== */
         @media (max-width: 900px) {
             .features-grid {
@@ -526,6 +586,7 @@
                 grid-template-columns: repeat(2, 1fr);
             }
             .header-nav { display: none; }
+            .hamburger { display: flex; }
         }
         @media (max-width: 768px) {
             .features-grid {
@@ -566,8 +627,20 @@
                 <svg width="16" height="16" fill="currentColor" viewBox="0 0 24 24"><path d="M12 0c-6.626 0-12 5.373-12 12 0 5.302 3.438 9.8 8.207 11.387.599.111.793-.261.793-.577v-2.234c-3.338.726-4.033-1.416-4.033-1.416-.546-1.387-1.333-1.756-1.333-1.756-1.089-.745.083-.729.083-.729 1.205.084 1.839 1.237 1.839 1.237 1.07 1.834 2.807 1.304 3.492.997.107-.775.418-1.305.762-1.604-2.665-.305-5.467-1.334-5.467-5.931 0-1.311.469-2.381 1.236-3.221-.124-.303-.535-1.524.117-3.176 0 0 1.008-.322 3.301 1.23.957-.266 1.983-.399 3.003-.404 1.02.005 2.047.138 3.006.404 2.291-1.552 3.297-1.23 3.297-1.23.653 1.653.242 2.874.118 3.176.77.84 1.235 1.911 1.235 3.221 0 4.609-2.807 5.624-5.479 5.921.43.372.823 1.102.823 2.222v3.293c0 .319.192.694.801.576 4.765-1.589 8.199-6.086 8.199-11.386 0-6.627-5.373-12-12-12z"/></svg>
                 GitHub
             </a>
+            <button class="hamburger" id="hamburger" aria-label="Toggle navigation" aria-expanded="false">
+                <span></span><span></span><span></span>
+            </button>
         </div>
     </header>
+
+    <!-- ===== MOBILE NAV ===== -->
+    <nav class="mobile-nav" id="mobile-nav">
+        <a href="#features" onclick="closeMobileNav()">Features</a>
+        <a href="#demo" onclick="closeMobileNav()">Demo</a>
+        <a href="#install" onclick="closeMobileNav()">Install</a>
+        <a href="#benchmarks" onclick="closeMobileNav()">Benchmarks</a>
+        <a href="https://github.com/wesllen-lima/velka">GitHub &#x2197;</a>
+    </nav>
 
     <!-- ===== HERO ===== -->
     <section class="hero">
@@ -630,8 +703,18 @@
                 </div>
                 <div class="feature-card red-accent animate-on-scroll">
                     <span class="feature-icon">&#x2638;&#xFE0F;</span>
-                    <h3>K8s Admission Controller</h3>
-                    <p>Kubernetes ValidatingWebhook that blocks Pods with secrets in manifests before they reach the cluster.</p>
+                    <h3>K8s &amp; IaC Scanning</h3>
+                    <p>Admission webhook that blocks Pods with secrets. Native scanning of Terraform, Kubernetes manifests, and Dockerfiles.</p>
+                </div>
+                <div class="feature-card yellow-accent animate-on-scroll">
+                    <span class="feature-icon">&#x1F4CA;</span>
+                    <h3>Baseline Management</h3>
+                    <p>Save a clean snapshot, then diff future scans against it. Only new secrets are flagged — zero noise from known findings.</p>
+                </div>
+                <div class="feature-card blue-accent animate-on-scroll">
+                    <span class="feature-icon">&#x1F50D;</span>
+                    <h3>AST Scope Analysis</h3>
+                    <p>Suppresses false positives from test functions, docstrings, and test files. ~40% fewer false positives out of the box.</p>
                 </div>
             </div>
         </div>
@@ -737,7 +820,7 @@
                     <div class="bench-label">Detection Rules</div>
                 </div>
                 <div class="bench-card animate-on-scroll">
-                    <div class="bench-value blue">150+</div>
+                    <div class="bench-value blue">257+</div>
                     <div class="bench-label">Tests</div>
                 </div>
                 <div class="bench-card animate-on-scroll">
@@ -769,9 +852,10 @@
         </div>
     </footer>
 
-    <!-- ===== MINIMAL JS: Scroll animation observer only ===== -->
+    <!-- ===== MINIMAL JS ===== -->
     <script>
         (function() {
+            // Scroll animation observer
             var observer = new IntersectionObserver(function(entries) {
                 entries.forEach(function(entry) {
                     if (entry.isIntersecting) {
@@ -783,7 +867,40 @@
             document.querySelectorAll('.animate-on-scroll').forEach(function(el) {
                 observer.observe(el);
             });
+
+            // Hamburger menu
+            var hamburger = document.getElementById('hamburger');
+            var mobileNav = document.getElementById('mobile-nav');
+            hamburger.addEventListener('click', function() {
+                var open = mobileNav.classList.toggle('open');
+                hamburger.classList.toggle('open', open);
+                hamburger.setAttribute('aria-expanded', open);
+            });
+
+            // Clipboard copy on install button
+            var installBtn = document.querySelector('.install-btn');
+            if (installBtn) {
+                installBtn.addEventListener('click', function(e) {
+                    if (installBtn.getAttribute('href') === '#install') {
+                        e.preventDefault();
+                        navigator.clipboard && navigator.clipboard.writeText('cargo install velka --locked').then(function() {
+                            var hint = installBtn.querySelector('.copy-hint');
+                            if (hint) { hint.textContent = 'copied!'; setTimeout(function() { hint.textContent = 'click to copy'; }, 2000); }
+                        });
+                        document.querySelector('#install').scrollIntoView({ behavior: 'smooth' });
+                    }
+                });
+                var hint = installBtn.querySelector('.copy-hint');
+                if (hint) hint.textContent = 'click to copy';
+            }
         })();
+
+        function closeMobileNav() {
+            document.getElementById('mobile-nav').classList.remove('open');
+            var h = document.getElementById('hamburger');
+            h.classList.remove('open');
+            h.setAttribute('aria-expanded', false);
+        }
     </script>
 </body>
 </html>

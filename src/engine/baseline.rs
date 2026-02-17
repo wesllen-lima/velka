@@ -228,7 +228,7 @@ mod tests {
         let current = vec![make_sin("AWS_ACCESS_KEY", "src/main.rs", 10, "AKIA123")];
         let result = diff(&current, &baseline);
         assert_eq!(result.removed_findings.len(), 1);
-        assert!(result.has_regressions() == false);
+        assert!(!result.has_regressions());
     }
 
     #[test]

@@ -192,7 +192,7 @@ mod tests {
                     rule_id: "AWS_ACCESS_KEY".to_string(),
                     severity: "Mortal".to_string(),
                 }],
-                scanned_at: 1234567890,
+                scanned_at: 1_234_567_890,
             };
             cache.insert("file1.rs".to_string(), entry);
             cache.save().unwrap();

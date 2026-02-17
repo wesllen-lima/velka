@@ -598,7 +598,7 @@ impl DynamicRulesManager {
         };
 
         manager.reload_rules()?;
-        manager.setupwatcher_handle()?;
+        manager.setup_watcher_handle()?;
 
         Ok(manager)
     }
@@ -646,14 +646,14 @@ impl DynamicRulesManager {
     fn load_toml_rules(path: &Path) -> Result<Vec<DynamicRule>> {
         let content = fs::read_to_string(path)?;
         let rules_file: RulesFile = toml::from_str(&content)
-            .map_err(|e| VelkaError::Config(format!("Invalid TOML in {}: {e}", path.display())))?;
+            .map_err(|e| VelkaError::Toml(format!("Invalid TOML in {}: {e}", path.display())))?;
         Ok(rules_file.rules)
     }
 
     fn load_yaml_rules(path: &Path) -> Result<Vec<DynamicRule>> {
         let content = fs::read_to_string(path)?;
         let rules_file: RulesFile = serde_yaml::from_str(&content)
-            .map_err(|e| VelkaError::Config(format!("Invalid YAML in {}: {e}", path.display())))?;
+            .map_err(|e| VelkaError::Yaml(format!("Invalid YAML in {}: {e}", path.display())))?;
         Ok(rules_file.rules)
     }
 
@@ -693,7 +693,7 @@ impl DynamicRulesManager {
             .collect()
     }
 
-    fn setupwatcher_handle(&mut self) -> Result<()> {
+    fn setup_watcher_handle(&mut self) -> Result<()> {
         let rules_dir = self.rules_dir.clone();
         let compiled_rules = Arc::clone(&self.compiled_rules);
 

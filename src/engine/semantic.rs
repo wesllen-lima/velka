@@ -309,10 +309,9 @@ mod tests {
 
     #[test]
     fn test_concat_high_entropy() {
-        let lines = vec![r#"let key = "aB3kL9mN2p" + "Q5rS7tU1vW";"#];
-        let line_refs: Vec<&str> = lines.iter().map(|s| *s).collect();
+        let lines: &[&str] = &[r#"let key = "aB3kL9mN2p" + "Q5rS7tU1vW";"#];
         let cfg = default_config();
-        let results = analyze_concatenation(&line_refs, "test.js", &cfg);
+        let results = analyze_concatenation(lines, "test.js", &cfg);
         // High entropy concatenation should be detected
         let _ = results;
     }

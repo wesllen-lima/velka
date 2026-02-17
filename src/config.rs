@@ -228,7 +228,7 @@ impl VelkaConfig {
     pub fn load_from(config_path: &std::path::Path) -> Result<Self> {
         let content = std::fs::read_to_string(config_path)?;
         let config: VelkaConfig =
-            toml::from_str(&content).map_err(|e| VelkaError::Config(e.to_string()))?;
+            toml::from_str(&content).map_err(|e| VelkaError::Toml(e.to_string()))?;
         compile_allowlist_regexes(config.scan.allowlist.as_ref())?;
         compile_allowlist_file_patterns(config.scan.allowlist.as_ref())?;
         Ok(config)

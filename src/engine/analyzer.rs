@@ -107,17 +107,6 @@ fn is_allowlisted_regex(matched: &str, allowlist_regexes: Option<&[Regex]>) -> b
     regexes.iter().any(|re| re.is_match(matched))
 }
 
-fn path_suggests_test(path_str: &str) -> bool {
-    let normalized = path_str.replace('\\', "/");
-    normalized.contains("/tests/")
-        || normalized.contains("/test/")
-        || normalized.contains("/__tests__/")
-        || normalized.contains("/spec/")
-        || normalized.contains(".spec.")
-        || normalized.contains("_test.")
-        || normalized.contains(".test.")
-}
-
 fn line_suggests_test_context(line: &str) -> bool {
     let trimmed = line.trim();
     trimmed.contains("#[cfg(test)]")
@@ -144,7 +133,7 @@ fn analyze_context(
     matched_value: Option<&str>,
     path_str: &str,
 ) -> bool {
-    if path_suggests_test(path_str) {
+    if crate::engine::ast_analyzer::is_test_file(path_str) {
         return true;
     }
     if line_suggests_test_context(line) {
