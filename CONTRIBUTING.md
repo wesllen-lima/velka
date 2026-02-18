@@ -46,11 +46,73 @@ Repo → **Settings → Branches → Add rule** for `master` (or `main`):
 6. Push and create a PR targeting the default branch
 7. Wait for CI to pass, then merge
 
-### Adding New Rules
-1. Add the rule to `src/engine/rules.rs`
-2. Add tests in `tests/` directory
-3. Update documentation if needed
-4. Test with real-world examples
+### Adding a New Detection Rule
+
+Adding a new rule to Velka involves 4 files. Here's the complete workflow:
+
+#### Step 1: Define the rule in `src/engine/rules.rs`
+
+Add an entry to the `RULES` static array:
+
+```rust
+Rule {
+    id: "MY_PROVIDER_KEY",
+    description: "My Provider API key detected",
+    pattern: define_regex!(r"(?i)my_provider[_-]?key\s*[:=]\s*['\"]?([a-zA-Z0-9]{32,})['\"]?"),
+    severity: Severity::Mortal,        // Mortal = credential, Venial = PII
+    expected_len: Some((32, 64)),       // expected token length range
+    required_prefix: Some("mpk_"),     // known prefix (or None)
+    charset: Some("alphanum"),          // "alphanum", "base64", "hex"
+},
+```
+
+Key fields:
+- `id`: SCREAMING_SNAKE_CASE, unique identifier
+- `pattern`: regex that captures the secret value in group 1
+- `severity`: `Mortal` for credentials/keys, `Venial` for PII
+- `expected_len`, `required_prefix`, `charset`: used by ML classifier for structural scoring
+
+#### Step 2: Add structural validation in `src/engine/structural_validators.rs`
+
+If your rule has a check digit or structural constraint (like CPF, IBAN), add a match arm in `validate_for_rule`:
+
+```rust
+"MY_PROVIDER_KEY" => Some(validate_my_provider(snippet)),
+```
+
+Then implement the validation function. If the rule has no mathematical validation (just pattern matching), skip this step.
+
+#### Step 3: Add integration tests in `tests/integration_test.rs`
+
+Every rule needs at least 3 tests:
+
+```rust
+#[test]
+fn test_my_provider_key_detected() {
+    let code = r#"MY_PROVIDER_KEY=mpk_a1b2c3d4e5f6g7h8i9j0k1l2m3n4o5p6"#;
+    let sins = scan_str(code).unwrap();
+    assert!(!sins.is_empty());
+    assert_eq!(sins[0].rule_id, "MY_PROVIDER_KEY");
+}
+
+#[test]
+fn test_my_provider_key_invalid_rejected() {
+    let code = r#"MY_PROVIDER_KEY=mpk_short"#;  // too short
+    let sins = scan_str(code).unwrap();
+    assert!(sins.is_empty());
+}
+
+#[test]
+fn test_my_provider_key_placeholder_rejected() {
+    let code = r#"MY_PROVIDER_KEY=mpk_00000000000000000000000000000000"#;
+    let sins = scan_str(code).unwrap();
+    assert!(sins.is_empty());
+}
+```
+
+#### Step 4: Document in `README.md`
+
+Add the new rule to the detection rules table in the README.
 
 ### Security Considerations
 - Never log or store actual secret values

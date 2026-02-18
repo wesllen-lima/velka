@@ -1,7 +1,7 @@
 - id: velka
-  name: velka
-  description: Run Velka secret scanner on staged files or full repo
-  entry: velka scan .
-  language: system
+  name: Velka Secret Scanner
+  description: Scan staged files for leaked secrets and credentials
+  entry: velka scan --staged --mortal-only
+  language: rust
+  types: [text]
   pass_filenames: false
-  always_run: true

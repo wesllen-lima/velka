@@ -15,11 +15,10 @@ const FILES_WITH_SECRETS: usize = 10_000;
 fn generate_secret_file(index: usize) -> String {
     let secret_type = index % 5;
     let filler = format!(
-        "// File {} - auto-generated for stress testing\n\
+        "// File {index} - auto-generated for stress testing\n\
          fn process_data_{index}() {{\n\
          \tlet data = vec![1, 2, 3];\n\
-         \tprintln!(\"processing {{}}\", data.len());\n",
-        index
+         \tprintln!(\"processing {{}}\", data.len());\n"
     );
     let secret_line = match secret_type {
         0 => format!(
@@ -38,7 +37,7 @@ fn generate_secret_file(index: usize) -> String {
             generate_alphanum_dash(43, index + 1000)
         ),
     };
-    format!("{}{}\n}}\n", filler, secret_line)
+    format!("{filler}{secret_line}\n}}\n")
 }
 
 /// Generates a clean source file with no secrets.
@@ -68,7 +67,7 @@ fn generate_alphanum_dash(len: usize, seed: usize) -> String {
 }
 
 #[test]
-#[ignore] // Run with: cargo test --test stress_test -- --ignored --nocapture
+#[ignore = "slow: run with cargo test --test stress_test -- --ignored --nocapture"]
 fn stress_scan_content_10k_secrets() {
     let config = VelkaConfig::default();
     let start = Instant::now();
@@ -86,26 +85,23 @@ fn stress_scan_content_10k_secrets() {
     let elapsed = start.elapsed();
     let total_found = found.load(Ordering::Relaxed);
     eprintln!(
-        "[STRESS] scan_content: {} secrets found in {} files, elapsed: {:.2?}",
-        total_found, FILES_WITH_SECRETS, elapsed
+        "[STRESS] scan_content: {total_found} secrets found in {FILES_WITH_SECRETS} files, elapsed: {elapsed:.2?}"
     );
 
     // Must find at least 80% of injected secrets
     assert!(
         total_found >= FILES_WITH_SECRETS * 80 / 100,
-        "Detection rate too low: found {} out of {} expected",
-        total_found,
-        FILES_WITH_SECRETS
+        "Detection rate too low: found {total_found} out of {FILES_WITH_SECRETS} expected"
     );
 }
 
 #[test]
-#[ignore] // Run with: cargo test --test stress_test -- --ignored --nocapture
+#[ignore = "slow: run with cargo test --test stress_test -- --ignored --nocapture"]
 fn stress_investigate_50k_files() {
     let temp = TempDir::new().unwrap();
     let base = temp.path();
 
-    eprintln!("[STRESS] Generating {} files...", TOTAL_FILES);
+    eprintln!("[STRESS] Generating {TOTAL_FILES} files...");
     let gen_start = Instant::now();
 
     // Create subdirectories to avoid single-dir bottleneck
@@ -158,13 +154,12 @@ fn stress_investigate_50k_files() {
     // Performance: must complete within 120 seconds even on slow CI
     assert!(
         scan_elapsed.as_secs() < 120,
-        "Scan took too long: {:?}",
-        scan_elapsed
+        "Scan took too long: {scan_elapsed:?}"
     );
 }
 
 #[test]
-#[ignore]
+#[ignore = "slow: adversarial input stress test, run with --ignored"]
 fn stress_scan_content_no_panic_on_adversarial_input() {
     let config = VelkaConfig::default();
 

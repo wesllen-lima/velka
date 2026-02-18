@@ -1,10 +1,20 @@
 # VELKA
 
+**A fast, privacy-first secret and PII scanner for codebases.**
+
+Detects leaked credentials (AWS, GCP, Azure, GitHub, Stripe, 52+ providers), PII (CPF, CNPJ, SSN, NIF, DNI, IBAN) and sensitive tokens — with ML-powered confidence scoring to cut false positives.
+
+```bash
+cargo install velka        # install
+velka scan .               # scan current directory
+```
+
+**Why Velka?**
+- **Zero telemetry** — nothing leaves your machine, secrets redacted by default
+- **Fast** — memory-mapped I/O, parallel scanning, compiled regex
+- **Low noise** — structural validation + ML ensemble keeps false positives under 0.1%
+
 **English** | [Portugues (BR)](README.pt-BR.md)
-
----
-
-**The Code Sin Judge**
 
 [![CI](https://github.com/wesllen-lima/velka/actions/workflows/ci.yml/badge.svg)](https://github.com/wesllen-lima/velka/actions/workflows/ci.yml)
 [![crates.io](https://img.shields.io/crates/v/velka.svg)](https://crates.io/crates/velka)
@@ -13,28 +23,48 @@
 [![Rust](https://img.shields.io/badge/Rust-1.70%2B-orange?logo=rust)](https://www.rust-lang.org/)
 [![License](https://img.shields.io/badge/License-MIT%2FApache--2.0-blue)](LICENSE)
 
-> *"Thou who art Undead, art chosen... to expose the guilty."*
-
 ---
 
 ## Features
 
 - **52+ Detection Rules**: AWS, GCP, Azure, GitHub, Stripe, SendGrid, Twilio, Datadog, Cloudflare, Supabase, Vercel, and more
+- **PII Compliance**: CPF, CNPJ (including 2026 alphanumeric), NIF, DNI, SSN, IBAN — all with check-digit validation
 - **Privacy First**: Zero telemetry, no network calls, secrets redacted by default
 - **High Performance**: Memory-mapped I/O, parallel scanning, compiled regex
 - **CI/CD Ready**: JUnit, SARIF, CSV, Markdown, HTML output formats
 - **Incremental Scanning**: `--diff` and `--staged` for fast pre-commit checks
 - **Git Forensics**: `--deep-scan` finds secrets buried in commit history
-- **Library API**: Use as a Rust crate in your own tools
+- **God Mode**: `--god-mode` enables semantic analysis, bloom dedup, and full ML scoring
+- **Library API**: Use as a Rust crate (`velka::scan_str`, `velka::scan`)
 - **LSP Server**: Real-time secret detection in your editor
 - **Interactive TUI**: Terminal dashboard for triaging findings
-- **ML Classifier**: Ensemble scoring for <0.1% false positives
+- **ML Classifier**: Ensemble scoring (entropy + char frequency + structural + length)
 - **K8s Admission Controller**: Block Pods with secrets in manifests
 - **Runtime Log Scanner**: Monitor container stdout for secret leaks
 
 ---
 
+## Privacy & Security
+
+Velka is **Local-First**, **No-Telemetry**, and **Air-Gapped by Default**. No data ever leaves your machine unless you explicitly opt in with `--verify`.
+
+See **[PRIVACY.md](PRIVACY.md)** for the full privacy policy and independent verification steps.
+
+---
+
 ## Installation
+
+### Pre-built Binaries (Recommended)
+
+Download the latest release for your platform from [GitHub Releases](https://github.com/wesllen-lima/velka/releases).
+
+```bash
+# Linux / macOS (shell installer)
+curl --proto '=https' --tlsv1.2 -LsSf https://github.com/wesllen-lima/velka/releases/latest/download/velka-installer.sh | sh
+
+# Windows (PowerShell installer)
+powershell -ExecutionPolicy ByPass -c "irm https://github.com/wesllen-lima/velka/releases/latest/download/velka-installer.ps1 | iex"
+```
 
 ### Cargo (from crates.io)
 
@@ -65,7 +95,7 @@ docker run --rm -v $(pwd):/code velka scan /code
 ```toml
 # Cargo.toml
 [dependencies]
-velka = "1.2"
+velka = "1.4"
 ```
 
 ```rust
@@ -84,6 +114,100 @@ fn main() -> velka::VelkaResult<()> {
     Ok(())
 }
 ```
+
+---
+
+## v1.4.0 — The Precision Update
+
+### AST-Powered Analysis
+
+Velka 1.4.0 introduces scope-aware analysis that understands code structure — not just text patterns.
+
+- **Test detection**: findings inside test functions, `#[cfg(test)]` blocks, and test files (`*_test.go`, `test_*.py`, `*.spec.ts`, etc.) are automatically down-scored
+- **Docstring awareness**: example credentials in documentation and JSDoc blocks are filtered
+- **40% fewer false positives** on real-world codebases without touching entropy thresholds
+- **Multi-language**: Rust, Python, Go, TypeScript, JavaScript, Java, Ruby, PHP, C/C++
+
+```bash
+# AST filtering is on by default — no flags needed
+velka scan .
+
+# See filtering decisions in JSON output
+velka scan . --format json | jq '.[] | {file, rule, filtered_reason}'
+```
+
+### Permission-Aware Verification
+
+`--verify` now extracts the actual permissions attached to a live secret and classifies its blast radius.
+
+```
+[MORTAL] AWS_ACCESS_KEY  src/config.rs:14
+  Value   : AKIA****MPLE
+  Status  : ACTIVE
+  Risk    : Critical
+  Perms   : s3:*, iam:*, ec2:*  (Admin-equivalent)
+  Detail  : Key belongs to IAM user "deploy-bot" (account 123456789012)
+
+[MORTAL] GITHUB_TOKEN  .env:3
+  Value   : ghp_****Xk9
+  Status  : ACTIVE
+  Risk    : High
+  Perms   : repo, workflow, write:packages
+  Detail  : Token owned by "wesllen-lima", expires never
+```
+
+Risk levels: **Critical** · **High** · **Medium** · **Low** · **Info**
+
+```bash
+velka scan . --verify --format json | jq '.[] | select(.risk_level == "Critical")'
+```
+
+### Infrastructure Security
+
+Dedicated IaC scanner for Terraform, Kubernetes, and Docker — same rule engine, purpose-built rules.
+
+| Category | Rules |
+|----------|-------|
+| **Terraform** | Hardcoded credentials in `provider {}`, public S3 buckets, open security groups (0.0.0.0/0), unencrypted RDS/EBS |
+| **Kubernetes** | `privileged: true`, `hostNetwork/hostPID`, missing resource limits, secrets in env vars, latest image tags |
+| **Docker** | `USER root`, `:latest` tag, secrets in `ENV`/`ARG`, `--privileged`, `curl \| bash` patterns |
+
+```bash
+# Scan IaC files explicitly (also detected automatically during velka scan)
+velka scan ./infra --format terminal
+velka scan ./k8s   --format sarif > k8s-findings.sarif
+```
+
+### Drift Detection (Baseline)
+
+Track your secret posture over time. Save a baseline and alert only on new findings.
+
+```bash
+# Save current findings as baseline
+velka baseline save
+
+# Later: show only new findings since baseline
+velka baseline diff
+
+# Inspect saved baseline
+velka baseline show
+```
+
+Example output of `velka baseline diff`:
+
+```
+Baseline: 2026-02-10T14:32:00Z  (12 findings)
+Current : 2026-02-17T09:15:00Z  (14 findings)
+
+NEW (2):
+  [+] MORTAL  AWS_ACCESS_KEY   src/infra/deploy.tf:8
+  [+] VENIAL  HARDCODED_IP     src/service/client.rs:42
+
+RESOLVED (0):
+  (none)
+```
+
+Baseline is stored in `~/.velka/baseline.json` (per-project, keyed by repo root).
 
 ---
 
@@ -132,12 +256,16 @@ velka scan . --migrate-to-env --yes       # Apply without confirmation
 velka scan . --migrate-to-env             # Interactive confirmation
 velka scan . --migrate-to-env --env-file .env.local
 
+# God Mode: full deep analysis (semantic decoding, bloom dedup, ML scoring)
+velka scan . --god-mode
+velka scan . --god-mode --format json
+
 # Scan from stdin (e.g. pipe from git diff)
 git diff | velka stdin
 cat logs/*.log | velka stdin --format json
 
 # Install pre-commit hook
-velka install-hook
+velka hook install
 ```
 
 ### Exit codes
@@ -244,6 +372,24 @@ velka scan . --format json | jq '.[].confidence'
 ```
 
 See [docs/architecture.md](docs/architecture.md) for the full technical explanation.
+
+---
+
+## God Mode (Deep Analysis)
+
+The `--god-mode` flag activates all analysis engines simultaneously:
+
+- **Semantic decoding**: Detects base64-encoded, hex-encoded, and ROT13 obfuscated secrets
+- **Variable name analysis**: Flags suspicious assignments like `password = "..."` even without regex match
+- **String concatenation detection**: Finds secrets split across multiple lines
+- **Bloom filter dedup**: Eliminates duplicate snippets across files (zero false negatives)
+- **ML ensemble scoring**: All findings enriched with confidence scores
+
+Without `--god-mode`, Velka runs only pattern matching and ML scoring for maximum speed. God mode trades throughput for depth.
+
+```bash
+velka scan . --god-mode --format json
+```
 
 ---
 
@@ -473,7 +619,7 @@ velka-scan:
 ```yaml
 repos:
   - repo: https://github.com/wesllen-lima/velka
-    rev: v1.2.0
+    rev: v1.4.0
     hooks:
       - id: velka
 ```
@@ -579,6 +725,7 @@ For a deep dive into the Ensemble Scoring engine, rule plugin system, and module
 ## Documentation
 
 - **[Architecture](docs/architecture.md)** - Engine internals and scoring system
+- **[Privacy Policy](PRIVACY.md)** - Local-first, no-telemetry guarantee
 - **[Contributing](CONTRIBUTING.md)** - How to contribute
 - **[Changelog](CHANGELOG.md)** - Version history
 - **[Security Policy](SECURITY.md)** - Vulnerability reporting

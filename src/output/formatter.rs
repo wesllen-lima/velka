@@ -1,3 +1,9 @@
+//! Output formatting for scan results.
+//!
+//! Supports multiple output formats: Terminal (colored), JSON, CSV,
+//! `JUnit` XML, SARIF, Markdown, HTML and a summary Report.
+//! Use [`OutputFormat::from_str`] to parse a format name from CLI input.
+
 use std::fmt::Write;
 
 use colored::Colorize;
@@ -64,6 +70,10 @@ struct RedactedSin {
     confidence: Option<f32>,
     #[serde(skip_serializing_if = "Option::is_none")]
     confidence_factors: Option<Vec<String>>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    confidence_level: Option<crate::domain::ConfidenceLevel>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    verification_detail: Option<crate::domain::VerificationDetail>,
 }
 
 #[derive(Serialize)]
@@ -145,12 +155,18 @@ fn format_terminal(sins: &[Sin], redaction: &RedactionConfig) -> String {
             Severity::Venial => "VENIAL".yellow().bold(),
         };
 
+        let ml_tag = sin
+            .confidence
+            .map(|c| format!(" [ML: {c:.2}]").bright_magenta().to_string())
+            .unwrap_or_default();
+
         let _ = writeln!(
             output,
-            "  [LINE {}] {} - {}",
+            "  [LINE {}] {} - {}{}",
             sin.line_number.to_string().bright_white(),
             severity_label,
-            sin.description.bright_white()
+            sin.description.bright_white(),
+            ml_tag
         );
 
         if let Some(ref hash) = sin.commit_hash {
@@ -199,6 +215,17 @@ fn format_terminal(sins: &[Sin], redaction: &RedactionConfig) -> String {
                 );
             }
         }
+
+        let _ = writeln!(
+            output,
+            "  {} {}",
+            "→".bright_black(),
+            format!(
+                "False positive? Run: velka feedback mark --file {} --line {}",
+                sin.path, sin.line_number
+            )
+            .bright_black()
+        );
 
         output.push('\n');
     }
@@ -283,6 +310,8 @@ fn format_json(sins: Vec<Sin>, redaction: &RedactionConfig) -> String {
                 verified: sin.verified,
                 confidence: sin.confidence,
                 confidence_factors: sin.confidence_factors,
+                confidence_level: sin.confidence_level,
+                verification_detail: sin.verification_detail,
             }
         })
         .collect();
@@ -777,6 +806,8 @@ mod tests {
             verified: None,
             confidence: None,
             confidence_factors: None,
+            confidence_level: None,
+            verification_detail: None,
         }
     }
 

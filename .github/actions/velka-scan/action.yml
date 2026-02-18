@@ -27,6 +27,10 @@ inputs:
     description: 'Only scan changed files (PR mode)'
     required: false
     default: 'false'
+  god-mode:
+    description: 'Enable deep analysis (semantic, bloom dedup, ML scoring)'
+    required: false
+    default: 'false'
   since:
     description: 'Incremental scan: only files changed since commit/tag/branch'
     required: false
@@ -97,6 +101,10 @@ runs:
 
         if [ -n "${{ inputs.since }}" ]; then
           SCAN_ARGS="$SCAN_ARGS --since ${{ inputs.since }}"
+        fi
+
+        if [ "${{ inputs.god-mode }}" = "true" ]; then
+          SCAN_ARGS="$SCAN_ARGS --god-mode"
         fi
 
         # Generate SARIF if requested

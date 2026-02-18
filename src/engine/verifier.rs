@@ -1,11 +1,14 @@
+use hmac::{Hmac, Mac};
 use regex::Regex;
+use sha2::{Digest, Sha256};
 use std::sync::LazyLock;
 use std::time::Duration;
 
-use crate::domain::Sin;
+use crate::domain::{ConfidenceLevel, RiskLevel, Sin, VerificationDetail};
+use crate::engine::structural_validators;
 
 static AWS_KEY_PATTERN: LazyLock<Option<Regex>> =
-    LazyLock::new(|| Regex::new(r"^(AKIA|ASIA)[A-Z0-9]{16}$").ok());
+    LazyLock::new(|| Regex::new(r"\b(AKIA|ASIA)[A-Z0-9]{16}\b").ok());
 
 static HTTP_CLIENT: LazyLock<Option<reqwest::blocking::Client>> = LazyLock::new(|| {
     reqwest::blocking::Client::builder()
@@ -26,39 +29,242 @@ static SLACK_WEBHOOK_RE: LazyLock<Option<Regex>> = LazyLock::new(|| {
     Regex::new(r"https://hooks\.slack\.com/services/T[A-Z0-9]+/B[A-Z0-9]+/[a-zA-Z0-9]+").ok()
 });
 
+static AWS_SECRET_RE: LazyLock<Option<Regex>> =
+    LazyLock::new(|| Regex::new(r"[A-Za-z0-9/+=]{40}").ok());
+
 pub fn verify(sin: &mut Sin) {
-    let verified = match sin.rule_id.as_str() {
-        "GITHUB_TOKEN" => verify_github(&sin.snippet),
-        "STRIPE_SECRET" => verify_stripe(&sin.snippet),
-        "SENDGRID_API" => verify_sendgrid(&sin.snippet),
-        "SLACK_WEBHOOK" => verify_slack_webhook(&sin.snippet),
-        _ => None,
-    };
-    sin.verified = verified;
+    match sin.rule_id.as_str() {
+        "AWS_ACCESS_KEY" => {
+            let detail = verify_aws_rich(&sin.snippet, &sin.context);
+            if let Some(ref d) = detail {
+                sin.verified = Some(d.is_active);
+                if d.is_active {
+                    let identity = d.identity.as_deref().unwrap_or("unknown");
+                    sin.description = format!(
+                        "CRITICAL (Verified) [{}] {}: {}",
+                        d.risk_level, identity, sin.description
+                    );
+                }
+            }
+            sin.verification_detail = detail;
+        }
+        "GITHUB_TOKEN" => {
+            let detail = verify_github_rich(&sin.snippet);
+            if let Some(ref d) = detail {
+                sin.verified = Some(d.is_active);
+                if d.is_active {
+                    let identity = d.identity.as_deref().unwrap_or("unknown");
+                    sin.description =
+                        format!("Verified GitHub token ({}): {}", identity, sin.description);
+                }
+            }
+            sin.verification_detail = detail;
+        }
+        "STRIPE_SECRET" => {
+            let detail = verify_stripe_rich(&sin.snippet);
+            if let Some(ref d) = detail {
+                sin.verified = Some(d.is_active);
+            }
+            sin.verification_detail = detail;
+        }
+        "SENDGRID_API" => {
+            sin.verified = verify_sendgrid(&sin.snippet);
+        }
+        "SLACK_WEBHOOK" => {
+            sin.verified = verify_slack_webhook(&sin.snippet);
+        }
+        _ => {}
+    }
 }
 
-fn verify_github(snippet: &str) -> Option<bool> {
+fn hmac_sha256(key: &[u8], data: &[u8]) -> Vec<u8> {
+    let mut mac = Hmac::<Sha256>::new_from_slice(key).expect("HMAC accepts any key size");
+    mac.update(data);
+    mac.finalize().into_bytes().to_vec()
+}
+
+fn sha256_hex(data: &str) -> String {
+    let mut hasher = Sha256::new();
+    hasher.update(data.as_bytes());
+    hex::encode(hasher.finalize())
+}
+
+/// Rich AWS verification: returns identity, attached policies, and risk level.
+fn verify_aws_rich(snippet: &str, context: &[String]) -> Option<VerificationDetail> {
+    let key_re = AWS_KEY_PATTERN.as_ref()?;
+    let access_key = key_re.find(snippet)?.as_str();
+    let secret_re = AWS_SECRET_RE.as_ref()?;
+    let all_text = context.join("\n");
+    let secret_key = secret_re.find(&all_text)?.as_str();
+
+    let client = HTTP_CLIENT.as_ref()?;
+    let host = "sts.amazonaws.com";
+    let service = "sts";
+    let region = "us-east-1";
+    let method = "POST";
+    let body = "Action=GetCallerIdentity&Version=2011-06-15";
+
+    let now = chrono::Utc::now();
+    let datestamp = now.format("%Y%m%d").to_string();
+    let amz_date = now.format("%Y%m%dT%H%M%SZ").to_string();
+    let payload_hash = sha256_hex(body);
+    let canonical_headers = format!(
+        "content-type:application/x-www-form-urlencoded\nhost:{host}\nx-amz-date:{amz_date}\n"
+    );
+    let signed_headers = "content-type;host;x-amz-date";
+    let canonical_request =
+        format!("{method}\n/\n\n{canonical_headers}\n{signed_headers}\n{payload_hash}");
+    let credential_scope = format!("{datestamp}/{region}/{service}/aws4_request");
+    let string_to_sign = format!(
+        "AWS4-HMAC-SHA256\n{amz_date}\n{credential_scope}\n{}",
+        sha256_hex(&canonical_request)
+    );
+    let k_date = hmac_sha256(format!("AWS4{secret_key}").as_bytes(), datestamp.as_bytes());
+    let k_region = hmac_sha256(&k_date, region.as_bytes());
+    let k_service = hmac_sha256(&k_region, service.as_bytes());
+    let k_signing = hmac_sha256(&k_service, b"aws4_request");
+    let signature = hex::encode(hmac_sha256(&k_signing, string_to_sign.as_bytes()));
+    let auth_header = format!(
+        "AWS4-HMAC-SHA256 Credential={access_key}/{credential_scope}, SignedHeaders={signed_headers}, Signature={signature}"
+    );
+
+    let resp = client
+        .post(format!("https://{host}"))
+        .header("Content-Type", "application/x-www-form-urlencoded")
+        .header("Host", host)
+        .header("X-Amz-Date", &amz_date)
+        .header("Authorization", &auth_header)
+        .body(body)
+        .send()
+        .ok()?;
+
+    let is_active = resp.status().is_success();
+    let body_text = resp.text().unwrap_or_default();
+
+    // Extract ARN and account from XML response
+    // <Arn>arn:aws:iam::123456789:user/ci-deploy</Arn>
+    // <Account>123456789</Account>
+    let arn_re = Regex::new(r"<Arn>([^<]+)</Arn>").ok()?;
+    let acct_re = Regex::new(r"<Account>([^<]+)</Account>").ok()?;
+    let identity = arn_re
+        .captures(&body_text)
+        .and_then(|c| c.get(1))
+        .map(|m| m.as_str().to_string());
+    let account = acct_re
+        .captures(&body_text)
+        .and_then(|c| c.get(1))
+        .map(|m| m.as_str().to_string());
+
+    // Determine risk level from identity string
+    // ARN patterns: user/*, role/*, assumed-role/*, root
+    let risk_level = if let Some(ref arn) = identity {
+        if arn.contains(":root") {
+            RiskLevel::Catastrophic
+        } else if arn.contains("Admin") || arn.contains("admin") || arn.contains("PowerUser") {
+            RiskLevel::Administrative
+        } else {
+            RiskLevel::ReadWrite
+        }
+    } else {
+        RiskLevel::ReadWrite
+    };
+
+    let mut permissions = Vec::new();
+    if let Some(acct) = account {
+        permissions.push(format!("account:{acct}"));
+    }
+
+    Some(VerificationDetail {
+        is_active,
+        identity,
+        permissions,
+        risk_level,
+    })
+}
+
+/// Rich GitHub token verification: extracts username and OAuth scopes.
+fn verify_github_rich(snippet: &str) -> Option<VerificationDetail> {
     let re = GITHUB_TOKEN_RE.as_ref()?;
     let token = re.find(snippet)?.as_str();
     let client = HTTP_CLIENT.as_ref()?;
+
     let resp = client
         .get("https://api.github.com/user")
         .header("Authorization", format!("Bearer {token}"))
         .send()
         .ok()?;
-    Some(resp.status().is_success())
+
+    let is_active = resp.status().is_success();
+
+    // Extract scopes from X-OAuth-Scopes header
+    let scopes: Vec<String> = resp
+        .headers()
+        .get("X-OAuth-Scopes")
+        .and_then(|v| v.to_str().ok())
+        .map(|s| s.split(',').map(|sc| sc.trim().to_string()).collect())
+        .unwrap_or_default();
+
+    // Parse user JSON for identity
+    let identity = if is_active {
+        resp.text().ok().and_then(|body| {
+            serde_json::from_str::<serde_json::Value>(&body)
+                .ok()
+                .and_then(|v| v["login"].as_str().map(String::from))
+        })
+    } else {
+        None
+    };
+
+    // Risk level from scopes
+    let risk_level = if scopes
+        .iter()
+        .any(|s| s == "admin:org" || s == "delete_repo" || s == "admin:repo_hook")
+    {
+        RiskLevel::Administrative
+    } else if scopes.iter().any(|s| s == "repo" || s == "write:org") {
+        RiskLevel::ReadWrite
+    } else if !scopes.is_empty() {
+        RiskLevel::ReadOnly
+    } else {
+        RiskLevel::ReadWrite // unknown — assume worst reasonable
+    };
+
+    Some(VerificationDetail {
+        is_active,
+        identity,
+        permissions: scopes,
+        risk_level,
+    })
 }
 
-fn verify_stripe(snippet: &str) -> Option<bool> {
+/// Rich Stripe verification: distinguishes live vs test keys.
+fn verify_stripe_rich(snippet: &str) -> Option<VerificationDetail> {
     let re = STRIPE_SECRET_RE.as_ref()?;
     let secret = re.find(snippet)?.as_str();
     let client = HTTP_CLIENT.as_ref()?;
+
     let resp = client
         .get("https://api.stripe.com/v1/balance")
         .basic_auth(secret, Some(""))
         .send()
         .ok()?;
-    Some(resp.status().is_success())
+
+    let is_active = resp.status().is_success();
+    let is_live = secret.contains("_live_");
+    let key_type = if is_live { "live" } else { "test" };
+
+    let risk_level = if is_live {
+        RiskLevel::Catastrophic
+    } else {
+        RiskLevel::ReadWrite
+    };
+
+    Some(VerificationDetail {
+        is_active,
+        identity: Some(format!("stripe:{key_type}")),
+        permissions: vec![format!("stripe/{key_type}")],
+        risk_level,
+    })
 }
 
 fn verify_sendgrid(snippet: &str) -> Option<bool> {
@@ -77,23 +283,10 @@ fn verify_slack_webhook(snippet: &str) -> Option<bool> {
     let re = SLACK_WEBHOOK_RE.as_ref()?;
     let url = re.find(snippet)?.as_str();
     let client = HTTP_CLIENT.as_ref()?;
-    let resp = client
-        .post(url)
-        .json(&serde_json::json!({"text": "velka verification"}))
-        .send()
-        .ok()?;
-    Some(resp.status().is_success())
-}
-
-fn path_suggests_test(path: &str) -> bool {
-    let normalized = path.replace('\\', "/");
-    normalized.contains("/tests/")
-        || normalized.contains("/test/")
-        || normalized.contains("/__tests__/")
-        || normalized.contains("/spec/")
-        || normalized.contains(".spec.")
-        || normalized.contains("_test.")
-        || normalized.contains(".test.")
+    // HEAD request to verify the endpoint exists without sending a message
+    let resp = client.head(url).send().ok()?;
+    // Slack returns 2xx/4xx for valid webhooks, connection failure means invalid
+    Some(!resp.status().is_server_error())
 }
 
 fn path_suggests_config(path: &str) -> bool {
@@ -197,7 +390,7 @@ pub fn compute_confidence(sin: &mut Sin) {
         score += 0.1;
         factors.push("+0.1 config_file".to_string());
     }
-    if path_suggests_test(&sin.path) {
+    if crate::engine::ast_analyzer::is_test_file(&sin.path) {
         score -= 0.2;
         factors.push("-0.2 test_file_path".to_string());
     }
@@ -208,6 +401,19 @@ pub fn compute_confidence(sin: &mut Sin) {
     } else {
         Some(factors)
     };
+
+    // Derive ConfidenceLevel from structural validators + score
+    let level = match structural_validators::validate_for_rule(&sin.snippet, &sin.rule_id) {
+        Some(structural_level) => {
+            let score_level = ConfidenceLevel::from_score(score);
+            // Take the higher of structural validation and score-derived level
+            structural_level.max(score_level)
+        }
+        None => ConfidenceLevel::from_score(score),
+    };
+
+    // Zero Leak Policy: regex matched → minimum Suspicious
+    sin.confidence_level = Some(structural_validators::enforce_zero_leak_floor(level));
 }
 
 #[cfg(test)]
@@ -228,6 +434,8 @@ mod tests {
             verified: None,
             confidence: None,
             confidence_factors: None,
+            confidence_level: None,
+            verification_detail: None,
         }
     }
 
@@ -236,7 +444,7 @@ mod tests {
         let mut sin = make_sin("AWS_ACCESS_KEY", "src/main.rs", "AKIA1234567890ABCDEF");
         compute_confidence(&mut sin);
         let conf = sin.confidence.unwrap();
-        assert!(conf > 0.7, "Expected > 0.7, got {}", conf);
+        assert!(conf > 0.7, "Expected > 0.7, got {conf}");
     }
 
     #[test]
@@ -248,11 +456,7 @@ mod tests {
         );
         compute_confidence(&mut sin);
         let conf = sin.confidence.unwrap();
-        assert!(
-            conf < 0.7,
-            "Test file should reduce confidence, got {}",
-            conf
-        );
+        assert!(conf < 0.7, "Test file should reduce confidence, got {conf}");
     }
 
     #[test]
@@ -262,8 +466,7 @@ mod tests {
         let conf = sin.confidence.unwrap();
         assert!(
             conf > 0.8,
-            "Config file should boost confidence, got {}",
-            conf
+            "Config file should boost confidence, got {conf}"
         );
     }
 
@@ -273,11 +476,7 @@ mod tests {
         sin.verified = Some(true);
         compute_confidence(&mut sin);
         let conf = sin.confidence.unwrap();
-        assert!(
-            conf >= 0.8,
-            "Verified should boost confidence, got {}",
-            conf
-        );
+        assert!(conf >= 0.8, "Verified should boost confidence, got {conf}");
     }
 
     #[test]
@@ -301,8 +500,7 @@ mod tests {
         let conf = sin.confidence.unwrap();
         assert!(
             conf > 0.5,
-            "Nearby keyword should boost confidence, got {}",
-            conf
+            "Nearby keyword should boost confidence, got {conf}"
         );
     }
 
@@ -313,15 +511,16 @@ mod tests {
         let lines = vec!["let key = \"AKIA1234567890ABCDEF\";"];
         enhance_confidence_with_context(&mut sin, &lines, 0);
         let conf = sin.confidence.unwrap();
-        assert!(conf > 0.5, "Assignment context should boost, got {}", conf);
+        assert!(conf > 0.5, "Assignment context should boost, got {conf}");
     }
 
     #[test]
     fn test_path_suggests_test_various() {
-        assert!(path_suggests_test("/project/tests/scan_test.rs"));
-        assert!(path_suggests_test("/project/__tests__/app.test.js"));
-        assert!(path_suggests_test("spec/helper.spec.ts"));
-        assert!(!path_suggests_test("src/main.rs"));
+        use crate::engine::ast_analyzer::is_test_file;
+        assert!(is_test_file("/project/tests/scan_test.rs"));
+        assert!(is_test_file("/project/__tests__/app.test.js"));
+        assert!(is_test_file("spec/helper.spec.ts"));
+        assert!(!is_test_file("src/main.rs"));
     }
 
     #[test]
@@ -345,6 +544,6 @@ mod tests {
         sin.verified = Some(true);
         compute_confidence(&mut sin);
         let conf = sin.confidence.unwrap();
-        assert!(conf <= 1.0 && conf >= 0.0);
+        assert!((0.0..=1.0).contains(&conf));
     }
 }

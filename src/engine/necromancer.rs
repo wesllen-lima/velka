@@ -1,6 +1,6 @@
 use std::cell::RefCell;
 use std::path::Path;
-use std::sync::Arc;
+use std::sync::{Arc, Mutex};
 
 use crate::error::Result;
 use crossbeam_channel::Sender;
@@ -10,9 +10,20 @@ use rayon::prelude::*;
 use crate::config::VelkaConfig;
 use crate::domain::Sin;
 use crate::engine::analyzer::{analyze_line, AnalyzeLineConfig};
+use crate::engine::bloom::BloomFilter;
 use crate::engine::rules::CompiledCustomRule;
 
-pub fn scan_history(repo_path: &Path, config: &VelkaConfig, sender: &Sender<Sin>) -> Result<()> {
+#[derive(Debug, Default)]
+pub struct HistoryScanStats {
+    pub blobs_total: u64,
+    pub blobs_skipped: u64,
+}
+
+pub fn scan_history(
+    repo_path: &Path,
+    config: &VelkaConfig,
+    sender: &Sender<Sin>,
+) -> Result<HistoryScanStats> {
     let repo = Repository::open(repo_path)?;
 
     let custom_rules = config.compile_custom_rules()?;
@@ -27,10 +38,30 @@ pub fn scan_history(repo_path: &Path, config: &VelkaConfig, sender: &Sender<Sin>
 
     let commit_oids: Vec<Oid> = revwalk.filter_map(std::result::Result::ok).collect();
     let repo_path_arc = Arc::new(repo_path.to_path_buf());
+    let bloom = Arc::new(Mutex::new(BloomFilter::new()));
+    let stats = Arc::new(Mutex::new(HistoryScanStats::default()));
 
     commit_oids.par_iter().try_for_each(|&oid| -> Result<()> {
         let repo = Repository::open(repo_path_arc.as_path())?;
         let commit = repo.find_commit(oid)?;
+
+        // Bloom filter: skip already-seen commits
+        {
+            let oid_bytes = oid.as_bytes();
+            let mut bloom_guard = bloom
+                .lock()
+                .unwrap_or_else(std::sync::PoisonError::into_inner);
+            if let Ok(mut s) = stats.lock() {
+                s.blobs_total += 1;
+            }
+            if bloom_guard.might_contain(oid_bytes) {
+                if let Ok(mut s) = stats.lock() {
+                    s.blobs_skipped += 1;
+                }
+                return Ok(());
+            }
+            bloom_guard.insert(oid_bytes);
+        }
 
         if commit.parent_count() == 0 {
             return Ok(());
@@ -155,5 +186,13 @@ pub fn scan_history(repo_path: &Path, config: &VelkaConfig, sender: &Sender<Sin>
         Ok(())
     })?;
 
-    Ok(())
+    let result = stats
+        .lock()
+        .map(|s| HistoryScanStats {
+            blobs_total: s.blobs_total,
+            blobs_skipped: s.blobs_skipped,
+        })
+        .unwrap_or_default();
+
+    Ok(result)
 }

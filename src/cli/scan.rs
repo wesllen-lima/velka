@@ -11,8 +11,8 @@ use velka::domain::{Severity, Sin};
 use velka::engine::{
     analyze_complexity, generate_all, get_changed_files, get_changed_files_since,
     get_diff_line_ranges_since, get_staged_files, inject_to_file, inject_to_readme,
-    investigate_with_progress, scan_content, scan_history, scan_single_file, DynamicRulesManager,
-    ScanCache,
+    investigate_with_mode, scan_content, scan_history, scan_single_file_with_mode,
+    DynamicRulesManager, ScanCache, ScanMode,
 };
 use velka::output::{format_output, OutputFormat, RedactionConfig};
 
@@ -194,6 +194,7 @@ pub fn run_scan(
     dry_run: bool,
     yes: bool,
     since: Option<&str>,
+    god_mode: bool,
 ) -> Result<()> {
     let path = validate_scan_path(path)?;
 
@@ -221,6 +222,12 @@ pub fn run_scan(
     let redaction = RedactionConfig {
         enabled: !no_redact && config.output.redact_secrets,
         visible_chars: config.output.redact_visible_chars,
+    };
+
+    let scan_mode = if god_mode {
+        ScanMode::god()
+    } else {
+        ScanMode::default_mode()
     };
 
     let (sender, receiver) = unbounded::<Sin>();
@@ -285,9 +292,13 @@ pub fn run_scan(
             let file_sender = sender.clone();
             let file_config = Arc::clone(&config);
             let cache_clone = cache.clone();
-            if let Err(e) =
-                scan_single_file(&file_path, &file_config, &file_sender, cache_clone.as_ref())
-            {
+            if let Err(e) = scan_single_file_with_mode(
+                &file_path,
+                &file_config,
+                &file_sender,
+                cache_clone.as_ref(),
+                scan_mode,
+            ) {
                 if std::env::var("VELKA_DEBUG").is_ok() {
                     eprintln!("Error scanning {}: {}", file_path.display(), e);
                 }
@@ -303,9 +314,10 @@ pub fn run_scan(
         let config_clone = Arc::clone(&config);
         let sender1 = sender.clone();
         let path_clone = path.clone();
+        let mode_clone = scan_mode;
         std::thread::spawn(move || {
             if let Err(e) =
-                investigate_with_progress(&path_clone, &config_clone, &sender1, progress)
+                investigate_with_mode(&path_clone, &config_clone, &sender1, progress, mode_clone)
             {
                 log_error("scan", &e);
             }

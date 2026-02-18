@@ -38,10 +38,7 @@ fn create_large_bench_dir(file_count: usize) -> TempDir {
     let secret_files = file_count / 100; // 1% of files have secrets
     for i in 0..secret_files {
         let dir = dirs[i % dirs.len()];
-        let content = format!(
-            "const API_KEY = \"AKIA{}\";\n",
-            format!("{:016X}", i * 12345 + 999999)
-        );
+        let content = format!("const API_KEY = \"AKIA{:016X}\";\n", i * 12345 + 999_999);
         fs::write(base.join(dir).join(format!("secret_{i}.js")), content).unwrap();
     }
 

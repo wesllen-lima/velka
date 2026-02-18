@@ -18,13 +18,15 @@ use velka::output::OutputFormat;
 enum Cli {
     Scan(ScanArgs),
     Stdin(StdinArgs),
-    InstallHook,
     Init(InitArgs),
     Honeytoken(HoneytokenArgs),
     Rules(RulesArgs),
     Rotate(RotateArgs),
     Hook(HookArgs),
     Quarantine(QuarantineArgs),
+    Feedback(FeedbackArgs),
+    /// Baseline tracking and drift detection for CI/CD
+    Baseline(BaselineArgs),
     Lsp,
     Tui(TuiArgs),
     K8s(K8sArgs),
@@ -121,10 +123,19 @@ struct ScanArgs {
     #[arg(long, help = "Configuration profile to use")]
     profile: Option<String>,
 
-    #[arg(long, help = "Only scan changed files (git diff)")]
+    // Scan mode group (mutually exclusive)
+    #[arg(
+        long,
+        group = "scan_source",
+        help = "Only scan changed files (git diff)"
+    )]
     diff: bool,
 
-    #[arg(long, help = "Only scan staged files (pre-commit mode)")]
+    #[arg(
+        long,
+        group = "scan_source",
+        help = "Only scan staged files (pre-commit mode)"
+    )]
     staged: bool,
 
     #[arg(long, help = "Show progress bar")]
@@ -160,9 +171,16 @@ struct ScanArgs {
 
     #[arg(
         long,
+        group = "scan_source",
         help = "Incremental scan: only files changed since <commit/tag/branch>"
     )]
     since: Option<String>,
+
+    #[arg(
+        long,
+        help = "Enable full deep analysis: semantic decoding, compliance, bloom dedup, ML scoring"
+    )]
+    god_mode: bool,
 }
 
 #[derive(Parser)]
@@ -300,6 +318,74 @@ struct QuarantineRestoreArgs {
     name: String,
 }
 
+#[derive(Parser)]
+struct FeedbackArgs {
+    #[command(subcommand)]
+    command: FeedbackCommand,
+}
+
+#[derive(Parser)]
+enum FeedbackCommand {
+    /// Mark a finding as a false positive
+    Mark(FeedbackMarkArgs),
+    /// List all false positive entries
+    List,
+    /// Clear all false positive entries
+    Clear,
+}
+
+#[derive(Parser)]
+struct FeedbackMarkArgs {
+    #[arg(long, help = "File path containing the finding")]
+    file: PathBuf,
+
+    #[arg(long, help = "Line number of the finding")]
+    line: usize,
+}
+
+#[derive(Parser)]
+struct BaselineArgs {
+    #[command(subcommand)]
+    command: BaselineCommand,
+}
+
+#[derive(Parser)]
+enum BaselineCommand {
+    /// Save current scan findings as the new baseline
+    Save(BaselineSaveArgs),
+    /// Compare current findings against the saved baseline
+    Diff(BaselineDiffArgs),
+    /// Show the contents of the saved baseline
+    Show(BaselineShowArgs),
+}
+
+#[derive(Parser)]
+struct BaselineSaveArgs {
+    #[arg(default_value = ".", help = "Path to scan")]
+    path: PathBuf,
+
+    #[arg(long, help = "Custom baseline file path")]
+    baseline_file: Option<PathBuf>,
+}
+
+#[derive(Parser)]
+struct BaselineDiffArgs {
+    #[arg(default_value = ".", help = "Path to scan")]
+    path: PathBuf,
+
+    #[arg(long, help = "Custom baseline file path")]
+    baseline_file: Option<PathBuf>,
+
+    #[arg(long, help = "Exit with code 1 if new findings are detected")]
+    exit_code: bool,
+}
+
+#[derive(Parser)]
+struct BaselineShowArgs {
+    #[arg(long, help = "Custom baseline file path")]
+    baseline_file: Option<PathBuf>,
+}
+
 fn main() -> Result<()> {
     match Cli::parse() {
         Cli::Scan(args) => cli::scan::run_scan(
@@ -320,11 +406,11 @@ fn main() -> Result<()> {
             args.dry_run,
             args.yes,
             args.since.as_deref(),
+            args.god_mode,
         ),
         Cli::Stdin(args) => {
             cli::scan::run_stdin(args.format, args.mortal_only, args.no_redact, args.ci)
         }
-        Cli::InstallHook => cli::hooks::install_pre_commit_hook(false, false),
         Cli::Init(args) => cli::init::run_init(&args.preset, args.force),
         Cli::Honeytoken(args) => match args.command {
             HoneytokenCommand::Generate(gen) => {
@@ -351,6 +437,22 @@ fn main() -> Result<()> {
         Cli::Quarantine(args) => match args.command {
             QuarantineCommand::List => cli::scan::run_quarantine_list(),
             QuarantineCommand::Restore(restore) => cli::scan::run_quarantine_restore(&restore.name),
+        },
+        Cli::Feedback(args) => match args.command {
+            FeedbackCommand::Mark(mark) => cli::feedback::run_feedback_mark(&mark.file, mark.line),
+            FeedbackCommand::List => cli::feedback::run_feedback_list(),
+            FeedbackCommand::Clear => cli::feedback::run_feedback_clear(),
+        },
+        Cli::Baseline(args) => match args.command {
+            BaselineCommand::Save(a) => {
+                cli::baseline::run_baseline_save(&a.path, a.baseline_file.as_deref())
+            }
+            BaselineCommand::Diff(a) => {
+                cli::baseline::run_baseline_diff(&a.path, a.baseline_file.as_deref(), a.exit_code)
+            }
+            BaselineCommand::Show(a) => {
+                cli::baseline::run_baseline_show(a.baseline_file.as_deref())
+            }
         },
         Cli::Lsp => {
             let rt = tokio::runtime::Runtime::new()?;
