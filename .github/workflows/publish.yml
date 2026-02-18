@@ -6,8 +6,6 @@ on:
 
 permissions:
   contents: write
-  pages: write
-  id-token: write
 
 env:
   CARGO_TERM_COLOR: always
@@ -199,27 +197,3 @@ jobs:
           draft: false
           prerelease: false
 
-  # ── GitHub Pages ───────────────────────────────────────────────
-  deploy-pages:
-    name: Deploy GitHub Pages
-    needs: [build-binaries]
-    runs-on: ubuntu-latest
-    environment:
-      name: github-pages
-      url: ${{ steps.deployment.outputs.page_url }}
-    steps:
-      - uses: actions/checkout@v4
-        with:
-          ref: master
-
-      - name: Setup Pages
-        uses: actions/configure-pages@v5
-
-      - name: Upload Pages artifact
-        uses: actions/upload-pages-artifact@v3
-        with:
-          path: docs
-
-      - name: Deploy to GitHub Pages
-        id: deployment
-        uses: actions/deploy-pages@v4
