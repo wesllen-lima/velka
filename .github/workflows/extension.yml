@@ -42,28 +42,35 @@ jobs:
           retention-days: 30
 
   publish:
-    name: Publish to Marketplace
+    name: Publish to GitHub Release
     if: startsWith(github.ref, 'refs/tags/ext-v')
     needs: build
     runs-on: ubuntu-latest
+    permissions:
+      contents: write
     steps:
       - uses: actions/checkout@v4
 
-      - uses: actions/setup-node@v4
+      - name: Download VSIX artifact
+        uses: actions/download-artifact@v4
         with:
-          node-version: 22
-          cache: npm
-          cache-dependency-path: vscode-extension/package-lock.json
+          name: velka-vsix
+          path: vsix-out
 
-      - name: Install dependencies
-        run: npm ci
+      - name: Create GitHub Release with VSIX
+        uses: ncipollo/release-action@v1
+        with:
+          tag: ${{ github.ref_name }}
+          name: ${{ github.ref_name }}
+          body: |
+            ## VS Code Extension
 
-      - name: Compile
-        run: npm run compile
-
-      - name: Publish to VS Code Marketplace
-        run: npx @vscode/vsce publish --pat "${{ secrets.VSCE_PAT }}"
-
-      - name: Publish to Open VSX (VSCodium / Gitpod)
-        run: npx ovsx publish --pat "${{ secrets.OVSX_PAT }}"
-        continue-on-error: true  # optional; skip if secret not configured
+            Install manually:
+            ```bash
+            code --install-extension velka-*.vsix
+            ```
+            Or drag-and-drop the `.vsix` file into the Extensions panel in VS Code.
+          artifacts: "vsix-out/*.vsix"
+          allowUpdates: true
+          draft: false
+          prerelease: false

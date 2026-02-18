@@ -275,12 +275,39 @@ velka hook install
 
 ---
 
+## VS Code Extension
+
+The official Velka extension for VS Code provides inline diagnostics, a findings tree view, and full CLI parity — all powered by `velka lsp` running in the background. Compatible with velka **1.4+**.
+
+**Install:**
+
+1. Download `velka-*.vsix` from the [latest extension release](https://github.com/wesllen-lima/velka/releases/tag/ext-v0.2.0)
+2. Install it:
+
+```bash
+code --install-extension velka-0.2.0.vsix
+```
+
+Or open the Extensions panel in VS Code, click `···` → **Install from VSIX…** and select the file.
+
+**Features:**
+
+- Inline diagnostics on save (warnings/errors for detected secrets)
+- Findings panel in the activity bar with filtering and refresh
+- All CLI commands available via the Command Palette (`Ctrl+Shift+P → Velka:`)
+- Baseline save/diff, God Mode, pre-commit hook install, SARIF export
+
+**Requirements:** `velka` must be installed and on `PATH` (or set `velka.binaryPath` in VS Code settings).
+
+```bash
+cargo install velka  # or download from GitHub Releases
+```
+
+---
+
 ## LSP Server (Editor Integration)
 
 Velka includes a built-in Language Server Protocol server that provides real-time secret detection as you type.
-
-<!-- TODO: Replace with actual GIF recording -->
-<!-- ![Velka LSP Demo](docs/assets/lsp-demo.gif) -->
 
 ### Setup
 
@@ -289,9 +316,9 @@ Velka includes a built-in Language Server Protocol server that provides real-tim
 velka lsp
 ```
 
-### VS Code
+### VS Code (manual LSP config)
 
-Add to your `settings.json`:
+If you prefer not to use the extension, add to your `settings.json`:
 
 ```json
 {
@@ -299,8 +326,6 @@ Add to your `settings.json`:
   "velka.lsp.path": "velka"
 }
 ```
-
-Or use the VS Code extension in `vscode-extension/`.
 
 ### Neovim (nvim-lspconfig)
 

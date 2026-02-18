@@ -3,7 +3,7 @@
   "displayName": "Velka Secret Scanner",
   "description": "Real-time secret detection — inline diagnostics, baseline management, and full CI parity. Powered by velka-lsp.",
   "version": "0.2.0",
-  "publisher": "velka",
+  "publisher": "wesllen-lima",
   "repository": { "type": "git", "url": "https://github.com/wesllen-lima/velka" },
   "homepage": "https://github.com/wesllen-lima/velka#readme",
   "bugs": { "url": "https://github.com/wesllen-lima/velka/issues" },
