@@ -18,21 +18,22 @@ const methods = [
 ];
 ---
 
-<section id="install" class="py-24">
-  <div class="max-w-6xl mx-auto px-6">
-    <div class="text-center mb-14 on-scroll">
-      <h2 class="text-[clamp(26px,4vw,38px)] font-bold mb-3">Installation</h2>
-      <p class="text-[#8b949e] text-base">One command. No runtime dependencies.</p>
+<section id="install" class="py-14 sm:py-20 md:py-24">
+  <div class="max-w-6xl mx-auto px-4 sm:px-6">
+    <div class="text-center mb-10 sm:mb-14 on-scroll">
+      <h2 class="font-bold mb-3" style="font-size: clamp(22px, 4vw, 36px);">Installation</h2>
+      <p class="text-[#8b949e] text-sm sm:text-base">One command. No runtime dependencies.</p>
     </div>
 
-    <div class="grid grid-cols-1 md:grid-cols-3 gap-4 max-w-5xl mx-auto">
+    <div class="grid grid-cols-1 md:grid-cols-3 gap-3 sm:gap-4 max-w-5xl mx-auto">
       {methods.map(m => (
-        <div class="on-scroll bg-[#161b22] border border-[#30363d] rounded-xl p-5">
-          <p class="text-xs text-[#6e7681] uppercase tracking-widest font-medium mb-3">{m.label}</p>
-          <code class="block px-4 py-3 bg-[#010409] rounded-lg text-xs text-[#10b981] break-all leading-relaxed">
-            {m.code}
-          </code>
-          {m.note && <p class="text-xs text-[#6e7681] mt-2">{m.note}</p>}
+        <div class="on-scroll bg-[#161b22] border border-[#30363d] rounded-xl p-4 sm:p-5">
+          <p class="text-[10px] sm:text-xs text-[#6e7681] uppercase tracking-widest font-medium mb-3">{m.label}</p>
+          <!-- overflow-x-auto so long commands scroll instead of breaking layout -->
+          <div class="px-3 sm:px-4 py-2.5 sm:py-3 bg-[#010409] rounded-lg overflow-x-auto">
+            <code class="block text-[11px] sm:text-xs text-[#10b981] whitespace-nowrap">{m.code}</code>
+          </div>
+          {m.note && <p class="text-[11px] sm:text-xs text-[#6e7681] mt-2">{m.note}</p>}
         </div>
       ))}
     </div>

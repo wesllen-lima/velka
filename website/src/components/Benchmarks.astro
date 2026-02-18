@@ -1,24 +1,26 @@
 ---
 const stats = [
-  { value: '52+',   label: 'Detection Rules', color: 'text-[#10b981]' },
-  { value: '257+',  label: 'Tests',           color: 'text-[#3b82f6]' },
-  { value: '<100ms',label: 'Typical Scan',    color: 'text-[#f59e0b]' },
-  { value: '0',     label: 'Network Calls',   color: 'text-red-500'   },
+  { value: '52+',    label: 'Detection Rules', color: 'text-[#10b981]' },
+  { value: '257+',   label: 'Tests',           color: 'text-[#3b82f6]' },
+  { value: '<100ms', label: 'Typical Scan',    color: 'text-[#f59e0b]' },
+  { value: '0',      label: 'Network Calls',   color: 'text-red-500'   },
 ];
 ---
 
-<section id="benchmarks" class="py-24 bg-gradient-to-b from-transparent via-red-600/3 to-transparent">
-  <div class="max-w-6xl mx-auto px-6">
-    <div class="text-center mb-14 on-scroll">
-      <h2 class="text-[clamp(26px,4vw,38px)] font-bold mb-3">By the numbers</h2>
-      <p class="text-[#8b949e] text-base">Built for speed, accuracy, and privacy.</p>
+<section id="benchmarks" class="py-14 sm:py-20 md:py-24 bg-gradient-to-b from-transparent via-red-600/[0.03] to-transparent">
+  <div class="max-w-6xl mx-auto px-4 sm:px-6">
+    <div class="text-center mb-10 sm:mb-14 on-scroll">
+      <h2 class="font-bold mb-3" style="font-size: clamp(22px, 4vw, 36px);">By the numbers</h2>
+      <p class="text-[#8b949e] text-sm sm:text-base">Built for speed, accuracy, and privacy.</p>
     </div>
 
-    <div class="grid grid-cols-2 lg:grid-cols-4 gap-4 max-w-3xl mx-auto">
+    <div class="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4 max-w-3xl mx-auto">
       {stats.map(s => (
-        <div class="on-scroll text-center py-8 px-4 bg-[#161b22] border border-[#30363d] rounded-2xl hover:-translate-y-1 hover:border-[#10b981] transition-all duration-300">
-          <div class={`text-4xl font-extrabold font-mono mb-2 ${s.color}`}>{s.value}</div>
-          <div class="text-sm text-[#8b949e]">{s.label}</div>
+        <div class="on-scroll text-center py-6 sm:py-8 px-3 sm:px-4 bg-[#161b22] border border-[#30363d] rounded-2xl hover:-translate-y-1 hover:border-[#10b981] transition-all duration-300">
+          <div class={`font-extrabold font-mono mb-1.5 sm:mb-2 ${s.color}`} style="font-size: clamp(26px, 5vw, 36px);">
+            {s.value}
+          </div>
+          <div class="text-xs sm:text-sm text-[#8b949e]">{s.label}</div>
         </div>
       ))}
     </div>

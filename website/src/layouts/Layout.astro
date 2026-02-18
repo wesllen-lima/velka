@@ -23,31 +23,46 @@ const {
     <meta property="og:description" content={description} />
     <meta property="og:type" content="website" />
     <link rel="canonical" href="https://wesllen-lima.github.io/velka/" />
+    <!-- Font performance: preconnect first, then load with swap -->
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link
-      href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&family=JetBrains+Mono:wght@400;500;700&display=swap"
+      href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&family=JetBrains+Mono:wght@400;700&display=swap"
       rel="stylesheet"
     />
   </head>
   <body>
     <slot />
     <script>
-      // Scroll animation observer
-      const observer = new IntersectionObserver(
+      // Scroll animation
+      const io = new IntersectionObserver(
         (entries) => entries.forEach((e) => e.isIntersecting && e.target.classList.add('visible')),
-        { threshold: 0.1 }
+        { threshold: 0.08 }
       );
-      document.querySelectorAll('.on-scroll').forEach((el) => observer.observe(el));
+      document.querySelectorAll('.on-scroll').forEach((el) => io.observe(el));
 
-      // Hamburger menu
-      const hamburger = document.getElementById('hamburger');
-      const mobileNav = document.getElementById('mobile-nav');
-      hamburger?.addEventListener('click', () => {
-        const open = mobileNav?.classList.toggle('hidden') === false;
-        hamburger.setAttribute('aria-expanded', String(open));
-        hamburger.classList.toggle('open', open);
-      });
+      // Hamburger — toggle hidden + flex properly
+      const btn = document.getElementById('hamburger');
+      const nav = document.getElementById('mobile-nav');
+      function openNav() {
+        nav?.classList.remove('hidden');
+        nav?.classList.add('flex');
+        btn?.setAttribute('aria-expanded', 'true');
+        btn?.classList.add('is-open');
+      }
+      function closeNav() {
+        nav?.classList.add('hidden');
+        nav?.classList.remove('flex');
+        btn?.setAttribute('aria-expanded', 'false');
+        btn?.classList.remove('is-open');
+      }
+      btn?.addEventListener('click', () =>
+        nav?.classList.contains('hidden') ? openNav() : closeNav()
+      );
+      // Close on any nav link tap
+      nav?.querySelectorAll('a').forEach((a) => a.addEventListener('click', closeNav));
 
-      // Clipboard copy
+      // Clipboard copy on install button
       const installBtn = document.getElementById('install-btn');
       const copyHint = document.getElementById('copy-hint');
       installBtn?.addEventListener('click', (e) => {
