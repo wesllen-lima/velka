@@ -1,59 +1,51 @@
 import * as vscode from "vscode";
-import { exec } from "child_process";
-import { promisify } from "util";
+import { resolveBinary, promptInstall } from "./binary";
+import { startLspClient, stopLspClient } from "./lsp";
+import { createStatusBar, setError } from "./statusBar";
+import { FindingsProvider } from "./treeView";
+import {
+  init as initCommands,
+  registerAll as registerCommands,
+} from "./commands";
 
-const execAsync = promisify(exec);
+export async function activate(
+  context: vscode.ExtensionContext
+): Promise<void> {
+  // Status bar is always visible — show state immediately
+  createStatusBar(context);
 
-const OUTPUT_CHANNEL_NAME = "Velka";
+  // Resolve the velka binary (PATH → cargo → bundled)
+  const binaryPath = await resolveBinary(context);
+  if (!binaryPath) {
+    setError("Binary not found — install velka to enable scanning");
+    await promptInstall();
+    return;
+  }
 
-export function activate(context: vscode.ExtensionContext): void {
-  const disposable = vscode.commands.registerCommand(
-    "velka.scan",
-    async () => {
-      const workspaceFolder = vscode.workspace.workspaceFolders?.[0];
-      if (!workspaceFolder) {
-        vscode.window.showErrorMessage("No workspace folder open.");
-        return;
-      }
+  // Findings tree view in the Velka activity bar panel
+  const provider = new FindingsProvider(context);
+  const treeView = vscode.window.createTreeView("velkaFindings", {
+    treeDataProvider: provider,
+    showCollapseAll: true,
+  });
+  context.subscriptions.push(treeView);
 
-      const channel = vscode.window.createOutputChannel(OUTPUT_CHANNEL_NAME);
-      channel.clear();
-      channel.show();
-      channel.appendLine("Running Velka scan...");
+  // Register all CLI-equivalent commands
+  initCommands(binaryPath, provider);
+  registerCommands(context);
 
-      try {
-        const { stdout, stderr } = await execAsync("velka scan . --format terminal", {
-          cwd: workspaceFolder.uri.fsPath,
-          maxBuffer: 10 * 1024 * 1024,
-        });
-        if (stdout) {
-          channel.append(stdout);
-        }
-        if (stderr) {
-          channel.append(stderr);
-        }
-        channel.appendLine("\nScan complete.");
-      } catch (err: unknown) {
-        const e = err as { stdout?: string; stderr?: string; code?: number };
-        if (e.stdout) {
-          channel.append(e.stdout);
-        }
-        if (e.stderr) {
-          channel.append(e.stderr);
-        }
-        if (e.code === 1) {
-          channel.appendLine("\nVelka found secrets (exit code 1).");
-        } else {
-          channel.appendLine(`\nError: ${e}`);
-          vscode.window.showErrorMessage(
-            "Velka scan failed. Ensure 'velka' is on PATH (cargo install velka)."
-          );
-        }
-      }
-    }
-  );
-
-  context.subscriptions.push(disposable);
+  // Start the LSP server (`velka lsp`) for real-time inline diagnostics.
+  // The LSP handles: textDocument/didOpen, didChange, didSave, didClose.
+  try {
+    await startLspClient(binaryPath, context);
+  } catch (err) {
+    setError(`LSP failed to start: ${err}`);
+    vscode.window.showWarningMessage(
+      `Velka: LSP server failed to start. Inline diagnostics unavailable. ${err}`
+    );
+  }
 }
 
-export function deactivate(): void {}
+export async function deactivate(): Promise<void> {
+  await stopLspClient();
+}

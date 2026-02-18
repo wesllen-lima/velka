@@ -1,36 +1,128 @@
 {
   "name": "velka",
   "displayName": "Velka Secret Scanner",
-  "description": "Run Velka secret scanner on your workspace",
-  "version": "0.1.0",
+  "description": "Real-time secret detection — inline diagnostics, baseline management, and full CI parity. Powered by velka-lsp.",
+  "version": "0.2.0",
   "publisher": "velka",
-  "repository": "https://github.com/wesllen-lima/velka",
+  "repository": { "type": "git", "url": "https://github.com/wesllen-lima/velka" },
   "homepage": "https://github.com/wesllen-lima/velka#readme",
-  "bugs": "https://github.com/wesllen-lima/velka/issues",
-  "engines": {
-    "vscode": "^1.70.0"
-  },
-  "categories": [
-    "Other",
-    "Security"
-  ],
-  "activationEvents": ["onCommand:velka.scan"],
+  "bugs": { "url": "https://github.com/wesllen-lima/velka/issues" },
+  "engines": { "vscode": "^1.85.0" },
+  "categories": ["Security", "Other"],
+  "keywords": ["security", "secrets", "scanner", "lsp", "pre-commit"],
+  "activationEvents": ["onStartupFinished"],
   "main": "./out/extension.js",
   "contributes": {
     "commands": [
-      {
-        "command": "velka.scan",
-        "title": "Velka: Scan for secrets"
+      { "command": "velka.scan",               "title": "Velka: Scan workspace",                    "icon": "$(search)" },
+      { "command": "velka.scanFile",           "title": "Velka: Scan current file" },
+      { "command": "velka.scanDiff",           "title": "Velka: Scan git diff (changed files)" },
+      { "command": "velka.scanStaged",         "title": "Velka: Scan staged files (pre-commit)" },
+      { "command": "velka.scanGitHistory",     "title": "Velka: Scan git history (deep scan)" },
+      { "command": "velka.scanGodMode",        "title": "Velka: Deep analysis — God Mode" },
+      { "command": "velka.exportSarif",        "title": "Velka: Export findings as SARIF" },
+      { "command": "velka.init",               "title": "Velka: Initialize velka.toml" },
+      { "command": "velka.hookInstall",        "title": "Velka: Install pre-commit hook" },
+      { "command": "velka.baselineSave",       "title": "Velka: Baseline — Save current findings", "icon": "$(save)" },
+      { "command": "velka.baselineDiff",       "title": "Velka: Baseline — Diff against saved",    "icon": "$(diff)" },
+      { "command": "velka.baselineShow",       "title": "Velka: Baseline — Show saved baseline" },
+      { "command": "velka.rotate",             "title": "Velka: Rotation guidance for secrets" },
+      { "command": "velka.honeytokenGenerate", "title": "Velka: Generate honeytokens" },
+      { "command": "velka.rulesList",          "title": "Velka: List active rules" },
+      { "command": "velka.rulesInstall",       "title": "Velka: Install rules from URL/file" },
+      { "command": "velka.quarantineList",     "title": "Velka: Quarantine — List files" },
+      { "command": "velka.quarantineRestore",  "title": "Velka: Quarantine — Restore file" },
+      { "command": "velka.feedbackMark",       "title": "Velka: Mark line as false positive" },
+      { "command": "velka.feedbackList",       "title": "Velka: List false positives" },
+      { "command": "velka.feedbackClear",      "title": "Velka: Clear all false positives" },
+      { "command": "velka.openTui",            "title": "Velka: Open interactive TUI" },
+      { "command": "velka.runtime",            "title": "Velka: Monitor runtime logs" },
+      { "command": "velka.refreshFindings",    "title": "Refresh",                                  "icon": "$(refresh)" }
+    ],
+    "configuration": {
+      "title": "Velka",
+      "properties": {
+        "velka.binaryPath": {
+          "type": "string",
+          "default": "",
+          "description": "Path to the velka binary. Leave empty to auto-detect (PATH → ~/.cargo/bin → bundled)."
+        },
+        "velka.scanOnSave": {
+          "type": "boolean",
+          "default": true,
+          "description": "Re-scan the active file on save via the LSP server."
+        },
+        "velka.scanOnStage": {
+          "type": "boolean",
+          "default": false,
+          "description": "Run a staged-files scan when files are staged in git."
+        },
+        "velka.verifyLiveSecrets": {
+          "type": "boolean",
+          "default": false,
+          "description": "Verify detected secrets against live APIs (makes network calls; requires --verify)."
+        },
+        "velka.godMode": {
+          "type": "boolean",
+          "default": false,
+          "description": "Enable full deep analysis: semantic decoding, compliance, bloom dedup, ML scoring."
+        },
+        "velka.minimumConfidence": {
+          "type": "number",
+          "default": 0.5,
+          "minimum": 0,
+          "maximum": 1,
+          "description": "Minimum confidence threshold (0–1) for reporting findings."
+        },
+        "velka.excludePatterns": {
+          "type": "array",
+          "items": { "type": "string" },
+          "default": [],
+          "description": "Glob patterns to exclude from scans (e.g. [\"vendor/**\", \"*.min.js\"])."
+        }
       }
-    ]
+    },
+    "viewsContainers": {
+      "activitybar": [
+        {
+          "id": "velka",
+          "title": "Velka",
+          "icon": "media/velka.svg"
+        }
+      ]
+    },
+    "views": {
+      "velka": [
+        {
+          "id": "velkaFindings",
+          "name": "Findings"
+        }
+      ]
+    },
+    "menus": {
+      "view/title": [
+        { "command": "velka.refreshFindings", "when": "view == velkaFindings", "group": "navigation@1" },
+        { "command": "velka.scan",            "when": "view == velkaFindings", "group": "navigation@2" },
+        { "command": "velka.baselineSave",    "when": "view == velkaFindings", "group": "navigation@3" },
+        { "command": "velka.baselineDiff",    "when": "view == velkaFindings", "group": "navigation@4" }
+      ],
+      "editor/context": [
+        { "command": "velka.feedbackMark", "when": "editorTextFocus", "group": "velka@1" },
+        { "command": "velka.scanFile",     "when": "editorTextFocus", "group": "velka@2" }
+      ]
+    }
   },
   "scripts": {
     "vscode:prepublish": "npm run compile",
     "compile": "tsc -p ./",
     "watch": "tsc -watch -p ./"
   },
+  "dependencies": {
+    "vscode-languageclient": "^9.0.0"
+  },
   "devDependencies": {
-    "@types/vscode": "^1.70.0",
+    "@types/vscode": "^1.85.0",
+    "@types/node": "^20.0.0",
     "typescript": "^5.0.0"
   }
 }
