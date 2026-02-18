@@ -31,6 +31,25 @@ jobs:
       - name: Type-check
         run: npm run compile
 
+      - name: Download velka binaries for bundling
+        working-directory: vscode-extension
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          mkdir -p bin
+          gh release download v1.4.0 \
+            --repo wesllen-lima/velka \
+            --pattern "velka-linux-x86_64" \
+            --pattern "velka-macos-x86_64" \
+            --pattern "velka-macos-aarch64" \
+            --pattern "velka-windows-x86_64.exe" \
+            --dir /tmp/velka-bins
+          cp /tmp/velka-bins/velka-linux-x86_64     bin/velka-linux-x64
+          cp /tmp/velka-bins/velka-macos-x86_64     bin/velka-darwin-x64
+          cp /tmp/velka-bins/velka-macos-aarch64    bin/velka-darwin-arm64
+          cp /tmp/velka-bins/velka-windows-x86_64.exe bin/velka-win32-x64.exe
+          chmod +x bin/velka-linux-x64 bin/velka-darwin-x64 bin/velka-darwin-arm64
+
       - name: Package .vsix
         run: npx @vscode/vsce package
 
