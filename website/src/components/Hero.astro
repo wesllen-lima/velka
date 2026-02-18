@@ -1,0 +1,53 @@
+---
+---
+
+<section class="relative pt-40 pb-20 text-center overflow-hidden">
+  <!-- Background glow -->
+  <div class="absolute inset-0 pointer-events-none">
+    <div class="absolute top-0 left-1/2 -translate-x-1/2 w-[600px] h-[600px] bg-red-600/8 rounded-full blur-3xl"></div>
+  </div>
+
+  <div class="relative max-w-6xl mx-auto px-6">
+    <h1
+      class="animate-fade-up text-[clamp(56px,10vw,120px)] font-black tracking-[-3px] leading-none mb-4 bg-gradient-to-br from-[#e6edf3] to-[#8b949e] bg-clip-text text-transparent"
+    >
+      VELKA
+    </h1>
+
+    <p class="animate-fade-up delay-1 text-[clamp(16px,3vw,24px)] font-light text-red-500 tracking-[4px] uppercase mb-6">
+      The Code Sin Judge
+    </p>
+
+    <p class="animate-fade-up delay-2 text-[clamp(15px,2vw,19px)] text-[#8b949e] max-w-xl mx-auto mb-10 leading-relaxed">
+      <strong class="text-[#e6edf3] font-semibold">Blazing-fast secret scanning</strong> written in Rust.
+      Detect leaked credentials, API keys, and tokens across your entire codebase
+      in milliseconds. Zero telemetry. Zero compromise.
+    </p>
+
+    <a
+      id="install-btn"
+      href="#install"
+      class="install-btn animate-fade-up delay-3 inline-flex items-center gap-3 px-8 py-4 bg-[#161b22] border border-[#30363d] rounded-xl font-mono text-base text-[#10b981] cursor-pointer hover:border-[#10b981] transition-all"
+    >
+      <span class="text-[#6e7681]">$</span>
+      cargo install velka
+      <span id="copy-hint" class="text-xs text-[#6e7681] font-sans ml-1 hidden sm:inline">click to copy</span>
+    </a>
+
+    <!-- Badges -->
+    <div class="animate-fade-up delay-4 flex flex-wrap justify-center gap-2 mt-10">
+      <a href="https://github.com/wesllen-lima/velka/actions/workflows/ci.yml">
+        <img src="https://github.com/wesllen-lima/velka/actions/workflows/ci.yml/badge.svg" alt="CI" class="h-5 rounded" />
+      </a>
+      <a href="https://crates.io/crates/velka">
+        <img src="https://img.shields.io/crates/v/velka.svg" alt="crates.io" class="h-5 rounded" />
+      </a>
+      <a href="https://github.com/wesllen-lima/velka/blob/master/LICENSE-MIT">
+        <img src="https://img.shields.io/badge/license-MIT%2FApache--2.0-blue.svg" alt="License" class="h-5 rounded" />
+      </a>
+      <a href="https://crates.io/crates/velka">
+        <img src="https://img.shields.io/crates/d/velka.svg" alt="Downloads" class="h-5 rounded" />
+      </a>
+    </div>
+  </div>
+</section>

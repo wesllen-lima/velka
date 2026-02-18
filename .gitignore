@@ -67,3 +67,4 @@ PLAN.md
 
 # cargo-release
 release.toml
+website/node_modules

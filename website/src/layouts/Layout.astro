@@ -1,0 +1,65 @@
+---
+import '../styles/global.css';
+
+interface Props {
+  title?: string;
+  description?: string;
+}
+
+const {
+  title = 'Velka | The Code Sin Judge',
+  description = 'Blazing-fast secret scanner written in Rust. 52+ rules, ML classifier, LSP server, IaC scanning, baseline management. Zero telemetry.',
+} = Astro.props;
+---
+
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>{title}</title>
+    <meta name="description" content={description} />
+    <meta property="og:title" content="Velka | The Code Sin Judge" />
+    <meta property="og:description" content={description} />
+    <meta property="og:type" content="website" />
+    <link rel="canonical" href="https://wesllen-lima.github.io/velka/" />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&family=JetBrains+Mono:wght@400;500;700&display=swap"
+      rel="stylesheet"
+    />
+  </head>
+  <body>
+    <slot />
+    <script>
+      // Scroll animation observer
+      const observer = new IntersectionObserver(
+        (entries) => entries.forEach((e) => e.isIntersecting && e.target.classList.add('visible')),
+        { threshold: 0.1 }
+      );
+      document.querySelectorAll('.on-scroll').forEach((el) => observer.observe(el));
+
+      // Hamburger menu
+      const hamburger = document.getElementById('hamburger');
+      const mobileNav = document.getElementById('mobile-nav');
+      hamburger?.addEventListener('click', () => {
+        const open = mobileNav?.classList.toggle('hidden') === false;
+        hamburger.setAttribute('aria-expanded', String(open));
+        hamburger.classList.toggle('open', open);
+      });
+
+      // Clipboard copy
+      const installBtn = document.getElementById('install-btn');
+      const copyHint = document.getElementById('copy-hint');
+      installBtn?.addEventListener('click', (e) => {
+        e.preventDefault();
+        navigator.clipboard?.writeText('cargo install velka --locked').then(() => {
+          if (copyHint) {
+            copyHint.textContent = 'copied!';
+            setTimeout(() => (copyHint.textContent = 'click to copy'), 2000);
+          }
+        });
+        document.getElementById('install')?.scrollIntoView({ behavior: 'smooth' });
+      });
+    </script>
+  </body>
+</html>

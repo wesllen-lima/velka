@@ -1,0 +1,40 @@
+---
+const methods = [
+  {
+    label: 'Cargo (recommended)',
+    code: 'cargo install velka --locked',
+    note: null,
+  },
+  {
+    label: 'Shell installer (Linux / macOS)',
+    code: 'curl -sSL https://github.com/wesllen-lima/velka/releases/latest/download/velka-installer.sh | sh',
+    note: 'No Rust required',
+  },
+  {
+    label: 'Binary (GitHub Releases)',
+    code: 'gh release download --repo wesllen-lima/velka',
+    note: 'Linux · macOS · Windows',
+  },
+];
+---
+
+<section id="install" class="py-24">
+  <div class="max-w-6xl mx-auto px-6">
+    <div class="text-center mb-14 on-scroll">
+      <h2 class="text-[clamp(26px,4vw,38px)] font-bold mb-3">Installation</h2>
+      <p class="text-[#8b949e] text-base">One command. No runtime dependencies.</p>
+    </div>
+
+    <div class="grid grid-cols-1 md:grid-cols-3 gap-4 max-w-5xl mx-auto">
+      {methods.map(m => (
+        <div class="on-scroll bg-[#161b22] border border-[#30363d] rounded-xl p-5">
+          <p class="text-xs text-[#6e7681] uppercase tracking-widest font-medium mb-3">{m.label}</p>
+          <code class="block px-4 py-3 bg-[#010409] rounded-lg text-xs text-[#10b981] break-all leading-relaxed">
+            {m.code}
+          </code>
+          {m.note && <p class="text-xs text-[#6e7681] mt-2">{m.note}</p>}
+        </div>
+      ))}
+    </div>
+  </div>
+</section>

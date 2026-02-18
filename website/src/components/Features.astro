@@ -1,0 +1,71 @@
+---
+const features = [
+  {
+    icon: '🛡️',
+    title: '52+ Detection Rules',
+    desc: 'AWS, GCP, GitHub, Stripe, Slack, Twilio, SendGrid, private keys, JWTs and more. Compiled regex for maximum speed.',
+    accent: 'hover:border-red-600',
+  },
+  {
+    icon: '🔒',
+    title: 'Zero Telemetry',
+    desc: 'Privacy first. No network calls, no analytics, no tracking. Your secrets stay on your machine. Always.',
+    accent: 'hover:border-[#10b981]',
+  },
+  {
+    icon: '⚡',
+    title: 'High Performance',
+    desc: 'Memory-mapped I/O, parallel file walking, compiled regex, lock-free channels. Thousands of files in milliseconds.',
+    accent: 'hover:border-[#f59e0b]',
+  },
+  {
+    icon: '🧠',
+    title: 'ML Classifier',
+    desc: 'Ensemble scoring with Shannon entropy, character frequency analysis, and structural validation. No ML runtime needed.',
+    accent: 'hover:border-[#3b82f6]',
+  },
+  {
+    icon: '💻',
+    title: 'LSP Server',
+    desc: 'Real-time secret detection in your editor. Works with VS Code, Neovim, Helix, Zed, and any LSP-compatible editor.',
+    accent: 'hover:border-[#10b981]',
+  },
+  {
+    icon: '☸️',
+    title: 'K8s & IaC Scanning',
+    desc: 'Admission webhook that blocks Pods with secrets. Native scanning of Terraform, Kubernetes manifests, and Dockerfiles.',
+    accent: 'hover:border-red-600',
+  },
+  {
+    icon: '📊',
+    title: 'Baseline Management',
+    desc: 'Save a clean snapshot, then diff future scans against it. Only new secrets are flagged — zero noise from known findings.',
+    accent: 'hover:border-[#f59e0b]',
+  },
+  {
+    icon: '🔍',
+    title: 'AST Scope Analysis',
+    desc: 'Suppresses false positives from test functions, docstrings, and test files. ~40% fewer false positives out of the box.',
+    accent: 'hover:border-[#3b82f6]',
+  },
+];
+---
+
+<section id="features" class="py-24">
+  <div class="max-w-6xl mx-auto px-6">
+    <div class="text-center mb-14 on-scroll">
+      <h2 class="text-[clamp(26px,4vw,38px)] font-bold mb-3">Everything you need. Nothing you don't.</h2>
+      <p class="text-[#8b949e] text-base max-w-md mx-auto">One binary. Zero dependencies. Absolute privacy.</p>
+    </div>
+
+    <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+      {features.map(f => (
+        <div class={`on-scroll bg-[#161b22] border border-[#30363d] rounded-2xl p-6 transition-all duration-300 hover:-translate-y-1 hover:shadow-[0_8px_30px_rgb(0,0,0,0.3)] ${f.accent}`}>
+          <span class="text-3xl block mb-4">{f.icon}</span>
+          <h3 class="font-semibold text-sm mb-2">{f.title}</h3>
+          <p class="text-[#8b949e] text-xs leading-relaxed">{f.desc}</p>
+        </div>
+      ))}
+    </div>
+  </div>
+</section>
